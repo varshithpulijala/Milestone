@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Budget Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+
+    <!-- Header -->
+    <header class="app-header">
+      <div class="app-logo">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2"/>
+          <path d="M2 10h20"/>
+        </svg>
+      </div>
+      <span class="app-title">Budget Tracker</span>
+    </header>
+
+    <!-- Balance Hero -->
+    <div class="hero-card">
+      <p class="hero-label">Total Balance</p>
+      <p class="hero-amount" id="balance">$0.00</p>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="hero-stat-icon income-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          </span>
+          <div>
+            <p class="hero-stat-label">Income</p>
+            <p class="hero-stat-value" id="total-income">$0.00</p>
+          </div>
+        </div>
+        <div class="hero-divider"></div>
+        <div class="hero-stat">
+          <span class="hero-stat-icon expense-icon">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+          </span>
+          <div>
+            <p class="hero-stat-label">Expenses</p>
+            <p class="hero-stat-value" id="total-expenses">$0.00</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Transaction Form -->
+    <div class="card">
+      <h2 class="card-title">New Transaction</h2>
+
+      <form id="transaction-form" novalidate>
+        <!-- Type Toggle -->
+        <div class="type-toggle" id="type-toggle" role="group" aria-label="Transaction type">
+          <button type="button" class="toggle-btn active" data-value="income">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            Income
+          </button>
+          <button type="button" class="toggle-btn" data-value="expense">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
+            Expense
+          </button>
+        </div>
+        <input type="hidden" id="tx-type" value="income" />
+
+        <div class="fields-row">
+          <div class="field">
+            <label for="description">Description</label>
+            <input type="text" id="description" placeholder="e.g. Salary, Rent…" autocomplete="off" />
+          </div>
+          <div class="field field-amount">
+            <label for="amount">Amount</label>
+            <div class="input-prefix-wrap">
+              <span class="input-prefix">$</span>
+              <input type="number" id="amount" placeholder="0.00" min="0.01" step="0.01" />
+            </div>
+          </div>
+        </div>
+
+        <p class="error-msg" id="error-msg" role="alert"></p>
+
+        <button type="submit" class="btn-add">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          Add Transaction
+        </button>
+      </form>
+    </div>
+
+    <!-- Transaction History -->
+    <div class="card">
+      <h2 class="card-title">History</h2>
+      <ul id="transaction-list">
+        <li class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+          <p>No transactions yet</p>
+          <span>Add your first one above</span>
+        </li>
+      </ul>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
