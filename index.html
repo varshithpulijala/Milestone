@@ -1,110 +1,1013 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Budget Tracker</title>
+  <title>Zeus AI Hub — Workforce & Operations</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            ink: { 900:'#070a12', 850:'#0b0f1a', 800:'#0f1524', 750:'#141b2d', 700:'#1b2438', 600:'#273350', 500:'#3a4a6b' },
+            brand: { 400:'#818cf8', 500:'#6366f1', 600:'#4f46e5' },
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- React + Babel (no build step) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <div class="container">
+<body class="bg-ink-900 text-slate-200 font-sans antialiased app-grid-bg">
+  <div id="root">
+    <div class="boot">
+      <div class="boot-logo">Z</div>
+      <p>Booting Zeus AI Hub…</p>
+    </div>
+  </div>
 
-    <!-- Header -->
-    <header class="app-header">
-      <div class="app-logo">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="5" width="20" height="14" rx="2"/>
-          <path d="M2 10h20"/>
-        </svg>
-      </div>
-      <span class="app-title">Budget Tracker</span>
-    </header>
+  <script type="text/jsx-source" id="app-src">
+const { useState, useEffect, useMemo, useRef } = React;
 
-    <!-- Balance Hero -->
-    <div class="hero-card">
-      <p class="hero-label">Total Balance</p>
-      <p class="hero-amount" id="balance">$0.00</p>
-      <div class="hero-stats">
-        <div class="hero-stat">
-          <span class="hero-stat-icon income-icon">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          </span>
+/* ============================================================
+   CONSTANTS & THEME TOKENS
+   ============================================================ */
+const DESIGNATIONS = ['AI Engineer','ML Researcher','Project Manager','Account Executive','Data Scientist','Product Designer','Solutions Architect','QA Engineer'];
+const DEPARTMENTS  = ['Engineering','Research','Delivery','Sales','Design','Operations'];
+const TRACKING_AREAS = ['Remote','Office HQ','On-site Client X','On-site Client Y','Hybrid'];
+
+const WORK_STATUSES = {
+  'Active':      { dot:'bg-emerald-400', chip:'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', ring:'shadow-[0_0_12px_-2px_rgba(52,211,153,0.6)]' },
+  'Available':   { dot:'bg-cyan-400',    chip:'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',          ring:'shadow-[0_0_12px_-2px_rgba(34,211,238,0.6)]' },
+  'At Capacity': { dot:'bg-amber-400',   chip:'bg-amber-500/15 text-amber-300 border-amber-500/30',       ring:'shadow-[0_0_12px_-2px_rgba(251,191,36,0.6)]' },
+  'OOO':         { dot:'bg-rose-400',    chip:'bg-rose-500/15 text-rose-300 border-rose-500/30',          ring:'' },
+};
+const TASK_STATUSES = {
+  'Not Started': { chip:'bg-slate-500/15 text-slate-300 border-slate-500/30', bar:'bg-slate-400' },
+  'In Progress': { chip:'bg-blue-500/15 text-blue-300 border-blue-500/30',    bar:'bg-blue-400' },
+  'Review':      { chip:'bg-amber-500/15 text-amber-300 border-amber-500/30', bar:'bg-amber-400' },
+  'Completed':   { chip:'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', bar:'bg-emerald-400' },
+};
+const RACI = {
+  'R': { label:'Responsible', cell:'bg-sky-500/20 text-sky-300',    solid:'bg-sky-500' },
+  'A': { label:'Accountable', cell:'bg-amber-500/20 text-amber-300', solid:'bg-amber-500' },
+  'C': { label:'Consulted',   cell:'bg-violet-500/20 text-violet-300', solid:'bg-violet-500' },
+  'I': { label:'Informed',    cell:'bg-slate-500/20 text-slate-300', solid:'bg-slate-500' },
+};
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+/* ============================================================
+   UTILITIES
+   ============================================================ */
+const uid = () => Math.random().toString(36).slice(2, 9);
+const cls = (...a) => a.filter(Boolean).join(' ');
+const pad = n => String(n).padStart(2,'0');
+const todayISO = () => new Date().toISOString().slice(0,10);
+const initials = name => name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+
+function fmtTime(iso){ const d=new Date(iso); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso+'T00:00:00'); return d.toLocaleDateString([], {month:'short', day:'numeric'}); }
+function fmtDateTime(iso){ const d=new Date(iso); return d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' · ' + fmtTime(iso); }
+function hoursBetween(a,b){ return (new Date(b)-new Date(a))/3600000; }
+function fmtDur(h){ const m=Math.round(h*60); return `${Math.floor(m/60)}h ${pad(m%60)}m`; }
+function avatarColor(id){ const c=['from-indigo-500 to-violet-500','from-cyan-500 to-blue-500','from-emerald-500 to-teal-500','from-fuchsia-500 to-pink-500','from-amber-500 to-orange-500','from-rose-500 to-red-500']; let s=0; for(const ch of id) s+=ch.charCodeAt(0); return c[s%c.length]; }
+
+/* ============================================================
+   SEED DATA
+   ============================================================ */
+function seed(){
+  const e = (name,email,designation,department,trackingArea,workStatus)=>({id:uid(),name,email,designation,department,trackingArea,workStatus});
+  const employees = [
+    e('Ava Chen','ava@zeus.ai','AI Engineer','Engineering','Remote','Active'),
+    e('Marcus Reid','marcus@zeus.ai','Project Manager','Delivery','Office HQ','At Capacity'),
+    e('Priya Nair','priya@zeus.ai','Data Scientist','Research','On-site Client X','Active'),
+    e('Diego Alvarez','diego@zeus.ai','Account Executive','Sales','Hybrid','Available'),
+    e('Sofia Rossi','sofia@zeus.ai','Product Designer','Design','Remote','OOO'),
+    e('Kenji Tanaka','kenji@zeus.ai','Solutions Architect','Engineering','On-site Client Y','Active'),
+  ];
+  const eid = n => employees[n].id;
+  const clients = [
+    { id:uid(), company:'Northwind Retail', primaryContact:'Ella Brooks · ella@northwind.com' },
+    { id:uid(), company:'Helios Bank',       primaryContact:'Ravi Menon · ravi@helios.co' },
+    { id:uid(), company:'Vertex Health',     primaryContact:'Dr. Lena Ford · lena@vertexhealth.io' },
+  ];
+  const cid = n => clients[n].id;
+  const tasks = [
+    { id:uid(), name:'Demand Forecasting Model', clientId:cid(0), dueDate:offset(4),  status:'In Progress', raci:{[eid(0)]:'R',[eid(1)]:'A',[eid(2)]:'C',[eid(3)]:'I'} },
+    { id:uid(), name:'Personalization Engine',    clientId:cid(0), dueDate:offset(-2), status:'Review',      raci:{[eid(2)]:'R',[eid(1)]:'A',[eid(4)]:'C'} },
+    { id:uid(), name:'Fraud Detection Pipeline',  clientId:cid(1), dueDate:offset(9),  status:'In Progress', raci:{[eid(5)]:'R',[eid(1)]:'A',[eid(0)]:'C',[eid(3)]:'I'} },
+    { id:uid(), name:'Risk Scoring Dashboard',    clientId:cid(1), dueDate:offset(-1), status:'Not Started', raci:{[eid(4)]:'R',[eid(1)]:'A'} },
+    { id:uid(), name:'Clinical NLP Extraction',   clientId:cid(2), dueDate:offset(14), status:'In Progress', raci:{[eid(2)]:'R',[eid(5)]:'A',[eid(0)]:'C'} },
+    { id:uid(), name:'Patient Triage Assistant',  clientId:cid(2), dueDate:offset(20), status:'Completed',   raci:{[eid(0)]:'R',[eid(1)]:'A',[eid(3)]:'I'} },
+  ];
+  const shifts = [];
+  const workDays = ['Mon','Tue','Wed','Thu','Fri'];
+  employees.forEach((emp,i)=>{ workDays.forEach(d=>{ if((i+d.length)%7!==0) shifts.push({id:uid(), employeeId:emp.id, day:d, start:'09:00', end:'17:00', area:emp.trackingArea}); }); });
+  // A couple of historical clock logs + one live session
+  const now = new Date();
+  const logAt = (empIdx, dayOffset, startH, durH, area)=>{ const d=new Date(now); d.setDate(d.getDate()+dayOffset); d.setHours(startH,0,0,0); const ci=new Date(d); const co=new Date(d.getTime()+durH*3600000); return {id:uid(), employeeId:eid(empIdx), clockIn:ci.toISOString(), clockOut:co.toISOString(), area}; };
+  const logs = [
+    logAt(0,-1,9,7.5,'Remote'), logAt(1,-1,8,8,'Office HQ'), logAt(2,-1,10,6,'On-site Client X'),
+    logAt(0,-2,9,8,'Remote'),   logAt(5,-2,9,7,'On-site Client Y'),
+  ];
+  // Live: Ava clocked in today
+  const liveIn = new Date(now); liveIn.setHours(9,12,0,0);
+  logs.unshift({ id:uid(), employeeId:eid(0), clockIn:liveIn.toISOString(), clockOut:null, area:'Remote' });
+  return { employees, clients, tasks, shifts, logs, currentUserId: employees[0].id };
+}
+function offset(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
+
+/* ============================================================
+   PERSISTENCE
+   ============================================================ */
+const KEY = 'zeus-ai-hub-v1';
+function loadState(){ try { const s = localStorage.getItem(KEY); if(s) return JSON.parse(s); } catch(e){} return seed(); }
+
+/* ============================================================
+   SMALL PRIMITIVES
+   ============================================================ */
+function Icon({ name, className='w-5 h-5' }){
+  const p = {
+    dashboard:'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z',
+    grid:'M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18',
+    clock:'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+    users:'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+    briefcase:'M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2zM16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16',
+    plus:'M12 5v14M5 12h14',
+    trash:'M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2',
+    x:'M18 6 6 18M6 6l12 12',
+    login:'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3',
+    logout:'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+    bolt:'M13 2 3 14h8l-1 8 10-12h-8z',
+    calendar:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+    filter:'M22 3H2l8 9.46V19l4 2v-8.54z',
+    search:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35',
+    alert:'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01',
+    pulse:'M22 12h-4l-3 9L9 3l-3 9H2',
+    pin:'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2',
+  }[name] || '';
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {p.split('M').filter(Boolean).map((seg,i)=><path key={i} d={'M'+seg} />)}
+    </svg>
+  );
+}
+
+function Modal({ title, subtitle, onClose, children, wide }){
+  useEffect(()=>{ const h=e=>e.key==='Escape'&&onClose(); window.addEventListener('keydown',h); return ()=>window.removeEventListener('keydown',h); },[]);
+  return (
+    <div className="zmodal-back fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start md:items-center justify-center p-4 overflow-y-auto" onMouseDown={onClose}>
+      <div className={cls('zmodal-card glass rounded-2xl w-full my-8 shadow-glow', wide?'max-w-3xl':'max-w-lg')} onMouseDown={e=>e.stopPropagation()}>
+        <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-indigo-500/10">
           <div>
-            <p class="hero-stat-label">Income</p>
-            <p class="hero-stat-value" id="total-income">$0.00</p>
+            <h3 className="text-lg font-bold text-white">{title}</h3>
+            {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
           </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5"><Icon name="x" className="w-5 h-5"/></button>
         </div>
-        <div class="hero-divider"></div>
-        <div class="hero-stat">
-          <span class="hero-stat-icon expense-icon">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-          </span>
-          <div>
-            <p class="hero-stat-label">Expenses</p>
-            <p class="hero-stat-value" id="total-expenses">$0.00</p>
-          </div>
-        </div>
+        <div className="p-6">{children}</div>
       </div>
     </div>
+  );
+}
 
-    <!-- Add Transaction Form -->
-    <div class="card">
-      <h2 class="card-title">New Transaction</h2>
+function Field({ label, children, hint }){
+  return (
+    <label className="block">
+      <span className="block text-xs font-semibold text-slate-400 mb-1.5">{label}</span>
+      {children}
+      {hint && <span className="block text-[11px] text-slate-500 mt-1">{hint}</span>}
+    </label>
+  );
+}
 
-      <form id="transaction-form" novalidate>
-        <!-- Type Toggle -->
-        <div class="type-toggle" id="type-toggle" role="group" aria-label="Transaction type">
-          <button type="button" class="toggle-btn active" data-value="income">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-            Income
-          </button>
-          <button type="button" class="toggle-btn" data-value="expense">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>
-            Expense
-          </button>
-        </div>
-        <input type="hidden" id="tx-type" value="income" />
+function Chip({ children, className }){
+  return <span className={cls('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border', className)}>{children}</span>;
+}
 
-        <div class="fields-row">
-          <div class="field">
-            <label for="description">Description</label>
-            <input type="text" id="description" placeholder="e.g. Salary, Rent…" autocomplete="off" />
+function Avatar({ emp, size='w-9 h-9' }){
+  return <div className={cls('rounded-xl grid place-items-center text-white font-bold text-xs bg-gradient-to-br shrink-0', size, avatarColor(emp.id))}>{initials(emp.name)}</div>;
+}
+
+/* ============================================================
+   APP ROOT
+   ============================================================ */
+function App(){
+  const [db, setDb] = useState(loadState);
+  const [view, setView] = useState('dashboard');
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(()=>{ localStorage.setItem(KEY, JSON.stringify(db)); }, [db]);
+  useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()), 30000); return ()=>clearInterval(t); }, []);
+
+  const set = patch => setDb(d => ({ ...d, ...(typeof patch==='function'?patch(d):patch) }));
+  const empById = useMemo(()=>Object.fromEntries(db.employees.map(e=>[e.id,e])), [db.employees]);
+  const clientById = useMemo(()=>Object.fromEntries(db.clients.map(c=>[c.id,c])), [db.clients]);
+
+  const nav = [
+    { id:'dashboard', label:'Dashboard Overview', icon:'dashboard' },
+    { id:'raci',      label:'RACI Matrix',        icon:'grid' },
+    { id:'rota',      label:'Rota & Time Tracking', icon:'clock' },
+    { id:'staff',     label:'Staff Directory',    icon:'users' },
+    { id:'clients',   label:'Client Management',  icon:'briefcase' },
+  ];
+
+  const ctx = { db, set, setDb, empById, clientById, now, setView };
+
+  return (
+    <div className="relative z-10 flex min-h-screen">
+      {/* Sidebar */}
+      <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-indigo-500/10 bg-ink-850/60 backdrop-blur-xl sticky top-0 h-screen">
+        <div className="flex items-center gap-3 px-5 h-16 border-b border-indigo-500/10">
+          <div className="w-10 h-10 rounded-xl grid place-items-center font-black text-white text-lg bg-gradient-to-br from-brand-500 to-fuchsia-500 shadow-glow">Z</div>
+          <div>
+            <div className="font-extrabold text-white leading-tight tracking-tight">Zeus AI Hub</div>
+            <div className="text-[10px] uppercase tracking-widest text-brand-400 font-semibold">Ops Command</div>
           </div>
-          <div class="field field-amount">
-            <label for="amount">Amount</label>
-            <div class="input-prefix-wrap">
-              <span class="input-prefix">$</span>
-              <input type="number" id="amount" placeholder="0.00" min="0.01" step="0.01" />
+        </div>
+        <nav className="flex-1 p-3 space-y-1">
+          {nav.map(n=>(
+            <button key={n.id} onClick={()=>setView(n.id)}
+              className={cls('w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition',
+                view===n.id ? 'bg-gradient-to-r from-brand-600/30 to-fuchsia-600/10 text-white border border-brand-500/30' : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent')}>
+              <Icon name={n.icon} className={cls('w-[18px] h-[18px]', view===n.id&&'text-brand-400')}/>
+              {n.label}
+            </button>
+          ))}
+        </nav>
+        <div className="p-4 text-[11px] text-slate-500 border-t border-indigo-500/10">
+          <div className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Local workspace · synced</div>
+        </div>
+      </aside>
+
+      {/* Main */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <Topbar {...ctx} nav={nav} view={view} />
+        <main className="flex-1 p-5 md:p-7 max-w-[1500px] w-full mx-auto fade-in" key={view}>
+          {view==='dashboard' && <Dashboard {...ctx} />}
+          {view==='raci' && <RaciMatrix {...ctx} />}
+          {view==='rota' && <Rota {...ctx} />}
+          {view==='staff' && <StaffDirectory {...ctx} />}
+          {view==='clients' && <ClientManagement {...ctx} />}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   TOPBAR + CLOCK WIDGET
+   ============================================================ */
+function Topbar({ db, set, empById, view, nav }){
+  const me = empById[db.currentUserId];
+  const openLog = db.logs.find(l=>l.employeeId===db.currentUserId && !l.clockOut);
+  const [tick, setTick] = useState(0);
+  useEffect(()=>{ if(!openLog) return; const t=setInterval(()=>setTick(x=>x+1),1000); return ()=>clearInterval(t); }, [openLog]);
+
+  const clockIn = () => set(d=>({ logs:[{id:uid(), employeeId:d.currentUserId, clockIn:new Date().toISOString(), clockOut:null, area:empById[d.currentUserId].trackingArea}, ...d.logs] }));
+  const clockOut = () => set(d=>({ logs:d.logs.map(l=> l.id===openLog.id ? {...l, clockOut:new Date().toISOString()} : l) }));
+  const elapsed = openLog ? hoursBetween(openLog.clockIn, Date.now()) : 0;
+  const title = nav.find(n=>n.id===view)?.label || '';
+
+  return (
+    <header className="sticky top-0 z-30 h-16 border-b border-indigo-500/10 bg-ink-900/70 backdrop-blur-xl flex items-center gap-4 px-5 md:px-7">
+      <div className="min-w-0">
+        <div className="text-[11px] text-slate-500 font-medium">Operations</div>
+        <h1 className="text-base md:text-lg font-bold text-white truncate -mt-0.5">{title}</h1>
+      </div>
+      <div className="flex-1"></div>
+
+      {/* Current user selector */}
+      <div className="hidden sm:flex items-center gap-2">
+        <span className="text-[11px] text-slate-500 font-medium">Session</span>
+        <select className="zi !py-1.5 !w-auto max-w-[170px] text-xs" value={db.currentUserId} onChange={e=>set({currentUserId:e.target.value})}>
+          {db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+      </div>
+
+      {/* Clock widget */}
+      <div className={cls('flex items-center gap-3 rounded-xl border pl-3 pr-2 py-1.5 transition', openLog ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-indigo-500/20 bg-ink-800/60')}>
+        <div className="text-right leading-tight">
+          <div className="text-[10px] uppercase tracking-wider font-bold" style={{color: openLog?'#34d399':'#64748b'}}>
+            {openLog ? 'On the clock' : 'Clocked out'}
+          </div>
+          <div className="text-sm font-bold text-white tabnum font-mono">
+            {openLog ? fmtDur(elapsed) : (me?fmtTime(new Date().toISOString()):'—')}
+          </div>
+        </div>
+        {openLog
+          ? <button onClick={clockOut} className="flex items-center gap-1.5 bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold px-3 py-2 rounded-lg transition"><Icon name="logout" className="w-4 h-4"/>Clock Out</button>
+          : <button onClick={clockIn} className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold px-3 py-2 rounded-lg transition"><Icon name="login" className="w-4 h-4"/>Clock In</button>}
+      </div>
+    </header>
+  );
+}
+
+/* ============================================================
+   DASHBOARD
+   ============================================================ */
+function MetricCard({ icon, label, value, sub, tone }){
+  const tones = {
+    indigo:'from-brand-600/20 to-brand-600/5 text-brand-300',
+    emerald:'from-emerald-600/20 to-emerald-600/5 text-emerald-300',
+    rose:'from-rose-600/20 to-rose-600/5 text-rose-300',
+    cyan:'from-cyan-600/20 to-cyan-600/5 text-cyan-300',
+  };
+  return (
+    <div className="glass glass-hover rounded-2xl p-5 relative overflow-hidden">
+      <div className={cls('absolute -top-8 -right-8 w-28 h-28 rounded-full bg-gradient-to-br blur-2xl opacity-60', tones[tone])}></div>
+      <div className="relative">
+        <div className={cls('w-11 h-11 rounded-xl grid place-items-center bg-gradient-to-br mb-4', tones[tone])}><Icon name={icon} className="w-5 h-5"/></div>
+        <div className="text-3xl font-extrabold text-white tabnum">{value}</div>
+        <div className="text-sm font-semibold text-slate-300 mt-1">{label}</div>
+        <div className="text-xs text-slate-500 mt-0.5">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ db, empById, clientById, setView }){
+  const activeTasks = db.tasks.filter(t=>t.status!=='Completed');
+  const overdue = db.tasks.filter(t=>t.status!=='Completed' && t.dueDate && t.dueDate < todayISO());
+  const clockedIn = db.logs.filter(l=>!l.clockOut);
+  const completed = db.tasks.filter(t=>t.status==='Completed').length;
+
+  const byStatus = Object.keys(TASK_STATUSES).map(s=>({ s, n: db.tasks.filter(t=>t.status===s).length }));
+  const maxStatus = Math.max(1, ...byStatus.map(x=>x.n));
+  const byWork = Object.keys(WORK_STATUSES).map(s=>({ s, n: db.employees.filter(e=>e.workStatus===s).length }));
+
+  // hours this week per employee (last 7 days)
+  const weekAgo = Date.now() - 7*86400000;
+  const hrs = db.employees.map(e=>{
+    const h = db.logs.filter(l=>l.employeeId===e.id).reduce((sum,l)=>{ const end=l.clockOut?new Date(l.clockOut).getTime():Date.now(); if(new Date(l.clockIn).getTime()>=weekAgo) sum+=hoursBetween(l.clockIn, end); return sum; },0);
+    return { e, h };
+  }).sort((a,b)=>b.h-a.h);
+  const maxHrs = Math.max(1, ...hrs.map(x=>x.h));
+
+  // donut for work status
+  const total = db.employees.length || 1;
+  let acc = 0;
+  const segColors = { 'Active':'#34d399','Available':'#22d3ee','At Capacity':'#fbbf24','OOO':'#fb7185' };
+  const grad = byWork.map(w=>{ const start=acc/total*360; acc+=w.n; const end=acc/total*360; return `${segColors[w.s]} ${start}deg ${end}deg`; }).join(', ');
+
+  const recent = [...db.logs].sort((a,b)=>new Date(b.clockIn)-new Date(a.clockIn)).slice(0,5);
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard icon="bolt"   tone="indigo"  label="Active Tasks"        value={activeTasks.length} sub={`${completed} completed`} />
+        <MetricCard icon="pulse"  tone="emerald" label="Clocked-in Staff"    value={clockedIn.length}   sub={`of ${db.employees.length} team members`} />
+        <MetricCard icon="alert"  tone="rose"    label="Overdue Deliverables" value={overdue.length}     sub={overdue.length? 'needs attention':'all on track'} />
+        <MetricCard icon="briefcase" tone="cyan" label="Active Clients"       value={db.clients.length}  sub={`${db.tasks.length} deliverables`} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Tasks by status */}
+        <div className="glass rounded-2xl p-6 lg:col-span-2">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="font-bold text-white">Deliverables by Status</h3>
+            <button onClick={()=>setView('raci')} className="text-xs font-semibold text-brand-400 hover:text-brand-300">Open RACI →</button>
+          </div>
+          <div className="space-y-4">
+            {byStatus.map(({s,n})=>(
+              <div key={s}>
+                <div className="flex justify-between text-xs font-semibold mb-1.5">
+                  <span className="text-slate-300">{s}</span><span className="text-slate-500 tabnum">{n}</span>
+                </div>
+                <div className="h-2.5 rounded-full bg-ink-700 overflow-hidden">
+                  <div className={cls('h-full rounded-full transition-all', TASK_STATUSES[s].bar)} style={{width:`${n/maxStatus*100}%`}}></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Work status donut */}
+        <div className="glass rounded-2xl p-6">
+          <h3 className="font-bold text-white mb-5">Team Workload</h3>
+          <div className="flex items-center gap-5">
+            <div className="relative w-32 h-32 shrink-0 rounded-full" style={{background:`conic-gradient(${grad})`}}>
+              <div className="absolute inset-[14px] rounded-full bg-ink-850 grid place-items-center">
+                <div className="text-center"><div className="text-2xl font-extrabold text-white tabnum">{total}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider">Staff</div></div>
+              </div>
+            </div>
+            <div className="space-y-2 text-sm">
+              {byWork.map(w=>(
+                <div key={w.s} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{background:segColors[w.s]}}></span>
+                  <span className="text-slate-300 flex-1">{w.s}</span>
+                  <span className="text-slate-500 font-semibold tabnum">{w.n}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
+      </div>
 
-        <p class="error-msg" id="error-msg" role="alert"></p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Hours this week */}
+        <div className="glass rounded-2xl p-6 lg:col-span-2">
+          <h3 className="font-bold text-white mb-5">Hours Logged · Last 7 Days</h3>
+          <div className="space-y-3">
+            {hrs.map(({e,h})=>(
+              <div key={e.id} className="flex items-center gap-3">
+                <Avatar emp={e} size="w-8 h-8"/>
+                <div className="w-28 shrink-0 text-sm text-slate-300 font-medium truncate">{e.name}</div>
+                <div className="flex-1 h-2.5 rounded-full bg-ink-700 overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-fuchsia-500" style={{width:`${h/maxHrs*100}%`}}></div>
+                </div>
+                <div className="w-16 text-right text-xs font-mono text-slate-400 tabnum">{fmtDur(h)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        <button type="submit" class="btn-add">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-          Add Transaction
-        </button>
-      </form>
+        {/* Recent activity */}
+        <div className="glass rounded-2xl p-6">
+          <h3 className="font-bold text-white mb-5">Recent Clock Activity</h3>
+          <div className="space-y-3">
+            {recent.map(l=>{ const e=empById[l.employeeId]; if(!e) return null; return (
+              <div key={l.id} className="flex items-center gap-3">
+                <Avatar emp={e} size="w-8 h-8"/>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-white truncate">{e.name}</div>
+                  <div className="text-[11px] text-slate-500 flex items-center gap-1"><Icon name="pin" className="w-3 h-3"/>{l.area}</div>
+                </div>
+                <div className="text-right">
+                  {l.clockOut
+                    ? <span className="text-[11px] font-mono text-slate-400">{fmtDur(hoursBetween(l.clockIn,l.clockOut))}</span>
+                    : <Chip className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30">live</Chip>}
+                  <div className="text-[10px] text-slate-600">{fmtTime(l.clockIn)}</div>
+                </div>
+              </div>
+            ); })}
+          </div>
+        </div>
+      </div>
     </div>
+  );
+}
 
-    <!-- Transaction History -->
-    <div class="card">
-      <h2 class="card-title">History</h2>
-      <ul id="transaction-list">
-        <li class="empty-state">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.3"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-          <p>No transactions yet</p>
-          <span>Add your first one above</span>
-        </li>
-      </ul>
+/* ============================================================
+   RACI MATRIX
+   ============================================================ */
+function RaciMatrix({ db, set, empById, clientById }){
+  const [fClient, setFClient] = useState('all');
+  const [fEmp, setFEmp] = useState('all');
+  const [fStatus, setFStatus] = useState('all');
+  const [showTask, setShowTask] = useState(false);
+
+  const emps = db.employees;
+  const columns = fEmp==='all' ? emps : emps.filter(e=>e.id===fEmp);
+
+  let tasks = db.tasks;
+  if(fClient!=='all') tasks = tasks.filter(t=>t.clientId===fClient);
+  if(fStatus!=='all') tasks = tasks.filter(t=>t.status===fStatus);
+  if(fEmp!=='all')    tasks = tasks.filter(t=>t.raci[fEmp]);
+
+  // group by client
+  const groups = {};
+  tasks.forEach(t=>{ (groups[t.clientId] = groups[t.clientId]||[]).push(t); });
+
+  const setRole = (taskId, empId, role) => set(d=>({ tasks: d.tasks.map(t=>{
+    if(t.id!==taskId) return t; const raci={...t.raci}; if(role==='') delete raci[empId]; else raci[empId]=role; return {...t, raci};
+  })}));
+  const setTaskStatus = (taskId, status) => set(d=>({ tasks: d.tasks.map(t=> t.id===taskId?{...t,status}:t) }));
+  const delTask = taskId => set(d=>({ tasks: d.tasks.filter(t=>t.id!==taskId) }));
+
+  return (
+    <div className="space-y-5">
+      {/* Filters */}
+      <div className="glass rounded-2xl p-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mr-1"><Icon name="filter" className="w-4 h-4"/>Filter</div>
+        <select className="zi !w-auto !py-2 text-sm" value={fClient} onChange={e=>setFClient(e.target.value)}>
+          <option value="all">All Clients</option>
+          {db.clients.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
+        </select>
+        <select className="zi !w-auto !py-2 text-sm" value={fEmp} onChange={e=>setFEmp(e.target.value)}>
+          <option value="all">All Employees</option>
+          {emps.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <select className="zi !w-auto !py-2 text-sm" value={fStatus} onChange={e=>setFStatus(e.target.value)}>
+          <option value="all">Any Status</option>
+          {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <div className="flex-1"></div>
+        <div className="hidden md:flex items-center gap-2 text-[11px]">
+          {Object.entries(RACI).map(([k,v])=>(
+            <span key={k} className="flex items-center gap-1.5 text-slate-400"><span className={cls('w-4 h-4 rounded grid place-items-center text-white font-black text-[10px]', v.solid)}>{k}</span>{v.label}</span>
+          ))}
+        </div>
+        <button onClick={()=>setShowTask(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2 rounded-lg transition"><Icon name="plus" className="w-4 h-4"/>New Task</button>
+      </div>
+
+      {/* Matrix */}
+      <div className="glass rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[720px]">
+            <thead>
+              <tr className="bg-ink-800/80">
+                <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-5 py-3 sticky left-0 bg-ink-800/95 backdrop-blur z-10 min-w-[260px]">Deliverable</th>
+                {columns.map(e=>(
+                  <th key={e.id} className="px-2 py-3 min-w-[64px]">
+                    <div className="flex flex-col items-center gap-1.5" title={`${e.name} · ${e.designation}`}>
+                      <Avatar emp={e} size="w-8 h-8"/>
+                      <span className="text-[10px] text-slate-400 font-semibold leading-tight text-center w-16 truncate">{e.name.split(' ')[0]}</span>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Object.keys(groups).length===0 && (
+                <tr><td colSpan={columns.length+1} className="text-center text-slate-500 py-14 text-sm">No deliverables match these filters.</td></tr>
+              )}
+              {Object.entries(groups).map(([cid, list])=>(
+                <React.Fragment key={cid}>
+                  <tr>
+                    <td colSpan={columns.length+1} className="px-5 py-2 bg-brand-600/10 border-y border-brand-500/15">
+                      <span className="text-xs font-bold text-brand-300 uppercase tracking-wider flex items-center gap-2"><Icon name="briefcase" className="w-3.5 h-3.5"/>{clientById[cid]?.company||'Unassigned'}</span>
+                    </td>
+                  </tr>
+                  {list.map(t=>{
+                    const isOverdue = t.status!=='Completed' && t.dueDate && t.dueDate < todayISO();
+                    return (
+                    <tr key={t.id} className="border-b border-white/5 hover:bg-white/[0.02] group">
+                      <td className="px-5 py-2.5 sticky left-0 bg-ink-850/95 backdrop-blur z-10 group-hover:bg-ink-800/95">
+                        <div className="font-semibold text-white text-sm">{t.name}</div>
+                        <div className="flex items-center gap-2 mt-1">
+                          <select value={t.status} onChange={e=>setTaskStatus(t.id, e.target.value)} className={cls('rounded-full text-[10px] font-bold border px-2 py-0.5 appearance-none cursor-pointer outline-none', TASK_STATUSES[t.status].chip)}>
+                            {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s} className="bg-ink-800 text-white">{s}</option>)}
+                          </select>
+                          <span className={cls('text-[10px] flex items-center gap-1', isOverdue?'text-rose-400 font-bold':'text-slate-500')}>
+                            {isOverdue&&<Icon name="alert" className="w-3 h-3"/>}{fmtDate(t.dueDate)}
+                          </span>
+                          <button onClick={()=>delTask(t.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 transition ml-auto"><Icon name="trash" className="w-3.5 h-3.5"/></button>
+                        </div>
+                      </td>
+                      {columns.map(e=>{
+                        const role = t.raci[e.id]||'';
+                        return (
+                          <td key={e.id} className="p-1 text-center">
+                            <div className={cls('raci-cell rounded-lg h-10 mx-auto w-14 border border-white/5 transition', role?RACI[role].cell:'bg-ink-800/40 hover:bg-ink-700/60 text-slate-600')}>
+                              <select value={role} onChange={ev=>setRole(t.id, e.id, ev.target.value)} title={role?RACI[role].label:'Assign role'}>
+                                <option value="" className="bg-ink-800 text-slate-400">·</option>
+                                {Object.keys(RACI).map(r=><option key={r} value={r} className="bg-ink-800 text-white">{r} — {RACI[r].label}</option>)}
+                              </select>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );})}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {showTask && <TaskModal db={db} set={set} onClose={()=>setShowTask(false)} />}
     </div>
+  );
+}
 
-  </div>
+function TaskModal({ db, set, onClose }){
+  const [name, setName] = useState('');
+  const [clientId, setClientId] = useState(db.clients[0]?.id||'');
+  const [dueDate, setDueDate] = useState(offset(7));
+  const [status, setStatus] = useState('Not Started');
+  const [err, setErr] = useState('');
+  const submit = () => {
+    if(!name.trim()) return setErr('Task name is required.');
+    if(!clientId) return setErr('Please pick a client (add one first).');
+    set(d=>({ tasks:[...d.tasks, {id:uid(), name:name.trim(), clientId, dueDate, status, raci:{}}] }));
+    onClose();
+  };
+  return (
+    <Modal title="New Deliverable" subtitle="Add a task to the RACI matrix" onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="Task / Deliverable name"><input className="zi" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Churn Prediction Model" autoFocus/></Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Client">
+            <select className="zi" value={clientId} onChange={e=>setClientId(e.target.value)}>
+              {db.clients.length===0 && <option value="">No clients yet</option>}
+              {db.clients.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
+            </select>
+          </Field>
+          <Field label="Due date"><input type="date" className="zi" value={dueDate} onChange={e=>setDueDate(e.target.value)}/></Field>
+        </div>
+        <Field label="Status">
+          <select className="zi" value={status} onChange={e=>setStatus(e.target.value)}>
+            {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+        </Field>
+        {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
+          <button onClick={submit} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm">Create Task</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
 
-  <script src="app.js"></script>
+/* ============================================================
+   ROTA & TIME TRACKING
+   ============================================================ */
+function Rota({ db, set, empById }){
+  const [tab, setTab] = useState('rota');
+  const [showShift, setShowShift] = useState(false);
+  const [fEmp, setFEmp] = useState('all');
+
+  const delShift = id => set(d=>({ shifts:d.shifts.filter(s=>s.id!==id) }));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex bg-ink-800/70 border border-indigo-500/15 rounded-xl p-1">
+          {[['rota','Shift Rota'],['log','Time Log']].map(([id,label])=>(
+            <button key={id} onClick={()=>setTab(id)} className={cls('px-4 py-2 rounded-lg text-sm font-semibold transition', tab===id?'bg-brand-600 text-white':'text-slate-400 hover:text-white')}>{label}</button>
+          ))}
+        </div>
+        <div className="flex-1"></div>
+        {tab==='rota' && <button onClick={()=>setShowShift(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2 rounded-lg"><Icon name="plus" className="w-4 h-4"/>Add Shift</button>}
+        {tab==='log' && (
+          <select className="zi !w-auto !py-2 text-sm" value={fEmp} onChange={e=>setFEmp(e.target.value)}>
+            <option value="all">All Employees</option>
+            {db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        )}
+      </div>
+
+      {tab==='rota' && <RotaGrid db={db} delShift={delShift} />}
+      {tab==='log' && <TimeLog db={db} empById={empById} fEmp={fEmp} />}
+
+      {showShift && <ShiftModal db={db} set={set} onClose={()=>setShowShift(false)} />}
+    </div>
+  );
+}
+
+function RotaGrid({ db, delShift }){
+  return (
+    <div className="glass rounded-2xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse min-w-[820px]">
+          <thead>
+            <tr className="bg-ink-800/80">
+              <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-5 py-3 sticky left-0 bg-ink-800/95 z-10 min-w-[190px]">Employee</th>
+              {DAYS.map(d=><th key={d} className="text-xs font-bold text-slate-400 uppercase tracking-wider px-3 py-3 min-w-[110px]">{d}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {db.employees.map(e=>(
+              <tr key={e.id} className="border-b border-white/5">
+                <td className="px-5 py-3 sticky left-0 bg-ink-850/95 z-10">
+                  <div className="flex items-center gap-3">
+                    <Avatar emp={e} size="w-8 h-8"/>
+                    <div className="min-w-0"><div className="text-sm font-semibold text-white truncate">{e.name}</div><div className="text-[11px] text-slate-500 truncate">{e.designation}</div></div>
+                  </div>
+                </td>
+                {DAYS.map(day=>{
+                  const s = db.shifts.find(sh=>sh.employeeId===e.id && sh.day===day);
+                  return (
+                    <td key={day} className="px-2 py-2 align-top text-center">
+                      {s ? (
+                        <div className="group relative rounded-lg bg-gradient-to-br from-brand-600/25 to-fuchsia-600/10 border border-brand-500/25 px-2 py-1.5">
+                          <div className="text-[11px] font-bold text-white font-mono tabnum">{s.start}–{s.end}</div>
+                          <div className="text-[9px] text-brand-300 truncate mt-0.5">{s.area}</div>
+                          <button onClick={()=>delShift(s.id)} className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 bg-rose-500 text-white rounded-full w-4 h-4 grid place-items-center text-[10px] transition"><Icon name="x" className="w-2.5 h-2.5"/></button>
+                        </div>
+                      ) : <span className="text-slate-700 text-xs">·</span>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TimeLog({ db, empById, fEmp }){
+  let logs = [...db.logs].sort((a,b)=>new Date(b.clockIn)-new Date(a.clockIn));
+  if(fEmp!=='all') logs = logs.filter(l=>l.employeeId===fEmp);
+
+  const totals = {};
+  db.logs.forEach(l=>{ const end=l.clockOut?new Date(l.clockOut).getTime():Date.now(); totals[l.employeeId]=(totals[l.employeeId]||0)+hoursBetween(l.clockIn,end); });
+  const totalList = Object.entries(totals).map(([id,h])=>({e:empById[id],h})).filter(x=>x.e).sort((a,b)=>b.h-a.h);
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="glass rounded-2xl overflow-hidden lg:col-span-2">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse min-w-[620px]">
+            <thead><tr className="bg-ink-800/80 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              <th className="px-5 py-3">Employee</th><th className="px-4 py-3">Area</th><th className="px-4 py-3">Clock In</th><th className="px-4 py-3">Clock Out</th><th className="px-4 py-3 text-right">Duration</th>
+            </tr></thead>
+            <tbody>
+              {logs.length===0 && <tr><td colSpan={5} className="text-center text-slate-500 py-12 text-sm">No clock records yet.</td></tr>}
+              {logs.map(l=>{ const e=empById[l.employeeId]; if(!e) return null; const live=!l.clockOut; const dur=hoursBetween(l.clockIn, l.clockOut?new Date(l.clockOut).getTime():Date.now()); return (
+                <tr key={l.id} className="border-b border-white/5 hover:bg-white/[0.02]">
+                  <td className="px-5 py-3"><div className="flex items-center gap-2.5"><Avatar emp={e} size="w-7 h-7"/><span className="text-sm font-semibold text-white">{e.name}</span></div></td>
+                  <td className="px-4 py-3"><span className="text-xs text-slate-400 flex items-center gap-1"><Icon name="pin" className="w-3 h-3"/>{l.area}</span></td>
+                  <td className="px-4 py-3 text-xs text-slate-300 font-mono">{fmtDateTime(l.clockIn)}</td>
+                  <td className="px-4 py-3 text-xs font-mono">{live? <Chip className="bg-emerald-500/15 text-emerald-300 border-emerald-500/30">active</Chip> : <span className="text-slate-300">{fmtDateTime(l.clockOut)}</span>}</td>
+                  <td className="px-4 py-3 text-right text-xs font-mono font-bold text-white tabnum">{fmtDur(dur)}</td>
+                </tr>
+              );})}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="glass rounded-2xl p-6">
+        <h3 className="font-bold text-white mb-4">Total Hours Worked</h3>
+        <div className="space-y-3">
+          {totalList.map(({e,h})=>(
+            <div key={e.id} className="flex items-center gap-3">
+              <Avatar emp={e} size="w-8 h-8"/>
+              <div className="flex-1 min-w-0"><div className="text-sm font-semibold text-white truncate">{e.name}</div><div className="text-[11px] text-slate-500">{e.designation}</div></div>
+              <div className="text-sm font-mono font-bold text-brand-300 tabnum">{fmtDur(h)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShiftModal({ db, set, onClose }){
+  const [employeeId, setEmployeeId] = useState(db.employees[0]?.id||'');
+  const [day, setDay] = useState('Mon');
+  const [start, setStart] = useState('09:00');
+  const [end, setEnd] = useState('17:00');
+  const emp = db.employees.find(e=>e.id===employeeId);
+  const [area, setArea] = useState(emp?.trackingArea || TRACKING_AREAS[0]);
+  const submit = () => {
+    set(d=>({ shifts:[...d.shifts.filter(s=>!(s.employeeId===employeeId && s.day===day)), {id:uid(), employeeId, day, start, end, area}] }));
+    onClose();
+  };
+  return (
+    <Modal title="Schedule Shift" subtitle="Replaces any existing shift for that employee/day" onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="Employee">
+          <select className="zi" value={employeeId} onChange={e=>{ setEmployeeId(e.target.value); const em=db.employees.find(x=>x.id===e.target.value); if(em) setArea(em.trackingArea); }}>
+            {db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+        </Field>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Day"><select className="zi" value={day} onChange={e=>setDay(e.target.value)}>{DAYS.map(d=><option key={d} value={d}>{d}</option>)}</select></Field>
+          <Field label="Start"><input type="time" className="zi" value={start} onChange={e=>setStart(e.target.value)}/></Field>
+          <Field label="End"><input type="time" className="zi" value={end} onChange={e=>setEnd(e.target.value)}/></Field>
+        </div>
+        <Field label="Tracking area for shift"><select className="zi" value={area} onChange={e=>setArea(e.target.value)}>{TRACKING_AREAS.map(a=><option key={a} value={a}>{a}</option>)}</select></Field>
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
+          <button onClick={submit} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm">Save Shift</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================
+   STAFF DIRECTORY
+   ============================================================ */
+function StaffDirectory({ db, set }){
+  const [showAdd, setShowAdd] = useState(false);
+  const [q, setQ] = useState('');
+  const [fStatus, setFStatus] = useState('all');
+
+  let list = db.employees;
+  if(q.trim()) { const s=q.toLowerCase(); list = list.filter(e=>e.name.toLowerCase().includes(s)||e.designation.toLowerCase().includes(s)||e.department.toLowerCase().includes(s)); }
+  if(fStatus!=='all') list = list.filter(e=>e.workStatus===fStatus);
+
+  const openLogIds = new Set(db.logs.filter(l=>!l.clockOut).map(l=>l.employeeId));
+  const setStatus = (id, workStatus) => set(d=>({ employees:d.employees.map(e=>e.id===id?{...e,workStatus}:e) }));
+  const delEmp = id => set(d=>({ employees:d.employees.filter(e=>e.id!==id), currentUserId: d.currentUserId===id ? (d.employees.find(e=>e.id!==id)?.id||'') : d.currentUserId }));
+
+  return (
+    <div className="space-y-5">
+      <div className="glass rounded-2xl p-4 flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Icon name="search" className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"/>
+          <input className="zi !pl-9" placeholder="Search by name, role, department…" value={q} onChange={e=>setQ(e.target.value)}/>
+        </div>
+        <select className="zi !w-auto !py-2.5 text-sm" value={fStatus} onChange={e=>setFStatus(e.target.value)}>
+          <option value="all">All Statuses</option>
+          {Object.keys(WORK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        <button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2.5 rounded-lg"><Icon name="plus" className="w-4 h-4"/>Add Employee</button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+        {list.length===0 && <div className="col-span-full text-center text-slate-500 py-14 text-sm glass rounded-2xl">No employees match your search.</div>}
+        {list.map(e=>{
+          const st = WORK_STATUSES[e.workStatus];
+          const online = openLogIds.has(e.id);
+          return (
+            <div key={e.id} className={cls('glass glass-hover rounded-2xl p-5 group', st.ring)}>
+              <div className="flex items-start gap-3">
+                <div className="relative">
+                  <Avatar emp={e} size="w-12 h-12 !text-sm"/>
+                  {online && <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-400 border-2 border-ink-850" title="Clocked in"></span>}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-bold text-white truncate">{e.name}</div>
+                  <div className="text-xs text-brand-300 font-semibold">{e.designation}</div>
+                  <div className="text-[11px] text-slate-500 truncate">{e.email}</div>
+                </div>
+                <button onClick={()=>delEmp(e.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 transition"><Icon name="trash" className="w-4 h-4"/></button>
+              </div>
+              <div className="flex flex-wrap gap-2 mt-4">
+                <Chip className="bg-ink-700/60 text-slate-300 border-white/10">{e.department}</Chip>
+                <Chip className="bg-ink-700/60 text-slate-300 border-white/10"><Icon name="pin" className="w-3 h-3"/>{e.trackingArea}</Chip>
+              </div>
+              <div className="mt-4 flex items-center gap-2">
+                <span className={cls('w-2 h-2 rounded-full', st.dot)}></span>
+                <select value={e.workStatus} onChange={ev=>setStatus(e.id, ev.target.value)} className={cls('rounded-full text-[11px] font-bold border px-2.5 py-1 appearance-none cursor-pointer outline-none', st.chip)}>
+                  {Object.keys(WORK_STATUSES).map(s=><option key={s} value={s} className="bg-ink-800 text-white">{s}</option>)}
+                </select>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showAdd && <EmployeeModal set={set} onClose={()=>setShowAdd(false)} />}
+    </div>
+  );
+}
+
+function EmployeeModal({ set, onClose }){
+  const [f, setF] = useState({ name:'', email:'', designation:DESIGNATIONS[0], department:DEPARTMENTS[0], trackingArea:TRACKING_AREAS[0], workStatus:'Available' });
+  const [err, setErr] = useState('');
+  const up = (k,v) => setF(s=>({...s,[k]:v}));
+  const submit = () => {
+    if(!f.name.trim()) return setErr('Name is required.');
+    if(!f.email.trim() || !f.email.includes('@')) return setErr('A valid email is required.');
+    set(d=>({ employees:[...d.employees, {id:uid(), ...f, name:f.name.trim(), email:f.email.trim()}] }));
+    onClose();
+  };
+  return (
+    <Modal title="Add Team Member" subtitle="Onboard a new employee to Zeus AI Hub" onClose={onClose}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Full name"><input className="zi" value={f.name} onChange={e=>up('name',e.target.value)} placeholder="Jordan Lee" autoFocus/></Field>
+          <Field label="Email"><input className="zi" value={f.email} onChange={e=>up('email',e.target.value)} placeholder="jordan@zeus.ai"/></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Designation"><select className="zi" value={f.designation} onChange={e=>up('designation',e.target.value)}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></Field>
+          <Field label="Department"><select className="zi" value={f.department} onChange={e=>up('department',e.target.value)}>{DEPARTMENTS.map(d=><option key={d}>{d}</option>)}</select></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Default tracking area"><select className="zi" value={f.trackingArea} onChange={e=>up('trackingArea',e.target.value)}>{TRACKING_AREAS.map(a=><option key={a}>{a}</option>)}</select></Field>
+          <Field label="Work status"><select className="zi" value={f.workStatus} onChange={e=>up('workStatus',e.target.value)}>{Object.keys(WORK_STATUSES).map(s=><option key={s}>{s}</option>)}</select></Field>
+        </div>
+        {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
+          <button onClick={submit} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm">Add Employee</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================
+   CLIENT MANAGEMENT
+   ============================================================ */
+function ClientManagement({ db, set, empById }){
+  const [showAdd, setShowAdd] = useState(false);
+  const delClient = id => set(d=>({ clients:d.clients.filter(c=>c.id!==id), tasks:d.tasks.filter(t=>t.clientId!==id) }));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-slate-400">{db.clients.length} active clients · {db.tasks.length} deliverables in flight</p>
+        <button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2.5 rounded-lg"><Icon name="plus" className="w-4 h-4"/>Add Client</button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {db.clients.length===0 && <div className="col-span-full text-center text-slate-500 py-14 text-sm glass rounded-2xl">No clients yet — add your first one.</div>}
+        {db.clients.map(c=>{
+          const tasks = db.tasks.filter(t=>t.clientId===c.id);
+          const active = tasks.filter(t=>t.status!=='Completed').length;
+          const done = tasks.filter(t=>t.status==='Completed').length;
+          const pct = tasks.length? Math.round(done/tasks.length*100):0;
+          return (
+            <div key={c.id} className="glass glass-hover rounded-2xl p-6 group">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl grid place-items-center bg-gradient-to-br from-cyan-500/30 to-blue-500/20 text-cyan-300"><Icon name="briefcase" className="w-5 h-5"/></div>
+                  <div>
+                    <div className="font-bold text-white text-lg leading-tight">{c.company}</div>
+                    <div className="text-xs text-slate-500">{c.primaryContact}</div>
+                  </div>
+                </div>
+                <button onClick={()=>delClient(c.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 transition"><Icon name="trash" className="w-4 h-4"/></button>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 mt-5">
+                <Stat label="Active" value={active} />
+                <Stat label="Completed" value={done} />
+                <Stat label="Progress" value={pct+'%'} />
+              </div>
+
+              <div className="mt-4">
+                <div className="h-2 rounded-full bg-ink-700 overflow-hidden"><div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{width:pct+'%'}}></div></div>
+              </div>
+
+              <div className="mt-4 space-y-1.5">
+                {tasks.slice(0,4).map(t=>(
+                  <div key={t.id} className="flex items-center gap-2 text-xs">
+                    <span className={cls('w-1.5 h-1.5 rounded-full', TASK_STATUSES[t.status].bar)}></span>
+                    <span className="text-slate-300 flex-1 truncate">{t.name}</span>
+                    <span className="text-slate-500">{fmtDate(t.dueDate)}</span>
+                  </div>
+                ))}
+                {tasks.length===0 && <div className="text-xs text-slate-600 italic">No deliverables yet</div>}
+                {tasks.length>4 && <div className="text-[11px] text-slate-500">+{tasks.length-4} more</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showAdd && <ClientModal set={set} onClose={()=>setShowAdd(false)} />}
+    </div>
+  );
+}
+
+function Stat({ label, value }){
+  return <div className="rounded-xl bg-ink-800/60 border border-white/5 px-3 py-2.5 text-center"><div className="text-xl font-extrabold text-white tabnum">{value}</div><div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">{label}</div></div>;
+}
+
+function ClientModal({ set, onClose }){
+  const [company, setCompany] = useState('');
+  const [primaryContact, setPrimaryContact] = useState('');
+  const [err, setErr] = useState('');
+  const submit = () => {
+    if(!company.trim()) return setErr('Company name is required.');
+    set(d=>({ clients:[...d.clients, {id:uid(), company:company.trim(), primaryContact:primaryContact.trim()||'—'}] }));
+    onClose();
+  };
+  return (
+    <Modal title="Add Client" subtitle="Register a new client organization" onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="Company name"><input className="zi" value={company} onChange={e=>setCompany(e.target.value)} placeholder="Acme Corp" autoFocus/></Field>
+        <Field label="Primary contact" hint="Name · email"><input className="zi" value={primaryContact} onChange={e=>setPrimaryContact(e.target.value)} placeholder="Jane Doe · jane@acme.com"/></Field>
+        {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
+          <button onClick={submit} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white font-bold text-sm">Add Client</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ============================================================
+   MOUNT
+   ============================================================ */
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+
+  <!-- Compile the JSX above with the CLASSIC runtime (no ESM imports, works via file://) -->
+  <script>
+    (function () {
+      try {
+        var src = document.getElementById('app-src').textContent;
+        var out = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
+        (0, eval)(out);
+      } catch (err) {
+        document.getElementById('root').innerHTML =
+          '<div style="max-width:640px;margin:80px auto;font-family:Inter,sans-serif;color:#fca5a5;background:#1b2438;border:1px solid #7f1d1d;border-radius:14px;padding:24px">' +
+          '<b style="color:#fff">Zeus AI Hub failed to start.</b><pre style="white-space:pre-wrap;margin-top:12px;color:#fca5a5;font-size:12px">' +
+          String(err && err.message || err) + '</pre></div>';
+        console.error(err);
+      }
+    })();
+  </script>
 </body>
 </html>

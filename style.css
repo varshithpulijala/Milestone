@@ -1,490 +1,112 @@
+/* ============================================================
+   Zeus AI Hub — custom theme layer (complements Tailwind CDN)
+   ============================================================ */
+
 :root {
-  --bg: #f4f6fb;
-  --card-bg: #ffffff;
-  --border: #e8ecf2;
-  --text: #0f172a;
-  --muted: #64748b;
-  --subtle: #94a3b8;
-
-  --income: #059669;
-  --income-light: #d1fae5;
-  --income-mid: #a7f3d0;
-
-  --expense: #dc2626;
-  --expense-light: #fee2e2;
-  --expense-mid: #fecaca;
-
-  --accent: #4f46e5;
-  --accent-2: #7c3aed;
-  --accent-hover: #4338ca;
-
-  --radius-sm: 8px;
-  --radius: 14px;
-  --radius-lg: 18px;
-
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-  --shadow: 0 4px 16px rgba(0,0,0,0.07), 0 1px 4px rgba(0,0,0,0.04);
-  --shadow-lg: 0 8px 32px rgba(79,70,229,0.18), 0 2px 8px rgba(79,70,229,0.1);
+  --grid-line: rgba(99, 102, 241, 0.07);
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+* { -webkit-font-smoothing: antialiased; }
+
+html, body { height: 100%; }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(99, 102, 241, 0.14), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, rgba(168, 85, 247, 0.10), transparent 55%),
+    #070a12;
+  background-attachment: fixed;
+}
+
+/* Subtle blueprint grid behind everything */
+.app-grid-bg::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size: 42px 42px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Boot splash ── */
+.boot {
   min-height: 100vh;
-  padding: 28px 16px 60px;
-  -webkit-font-smoothing: antialiased;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 18px; color: #94a3b8; font-family: 'Inter', sans-serif;
+}
+.boot-logo {
+  width: 64px; height: 64px; border-radius: 18px;
+  display: grid; place-items: center;
+  font-weight: 900; font-size: 30px; color: #fff;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  box-shadow: 0 12px 40px -8px rgba(99,102,241,0.6);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.94); opacity: 0.8; } }
+
+/* ── Glass panels ── */
+.glass {
+  background: linear-gradient(180deg, rgba(20, 27, 45, 0.72), rgba(15, 21, 36, 0.72));
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(99, 102, 241, 0.14);
+}
+.glass-hover { transition: border-color .18s, transform .18s, box-shadow .18s; }
+.glass-hover:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 50px -20px rgba(99,102,241,0.5);
 }
 
-.container {
-  max-width: 520px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(99,102,241,0.25); border-radius: 8px;
+  border: 2px solid transparent; background-clip: padding-box;
 }
+::-webkit-scrollbar-thumb:hover { background: rgba(99,102,241,0.45); background-clip: padding-box; }
 
-/* ── Header ── */
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 4px 0 8px;
-}
-
-.app-logo {
-  width: 38px;
-  height: 38px;
+/* ── Form controls (dark) ── */
+.zi {
+  width: 100%;
+  background: rgba(7, 10, 18, 0.7);
+  border: 1.5px solid rgba(99,102,241,0.18);
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(79,70,229,0.35);
-}
-
-.app-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text);
-  letter-spacing: -0.4px;
-}
-
-/* ── Hero Balance Card ── */
-.hero-card {
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #a855f7 100%);
-  border-radius: var(--radius-lg);
-  padding: 32px 28px 26px;
-  color: #fff;
-  box-shadow: var(--shadow-lg);
-  position: relative;
-  overflow: hidden;
-}
-
-.hero-card::before {
-  content: '';
-  position: absolute;
-  top: -40px;
-  right: -40px;
-  width: 160px;
-  height: 160px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.07);
-  pointer-events: none;
-}
-
-.hero-card::after {
-  content: '';
-  position: absolute;
-  bottom: -60px;
-  left: -20px;
-  width: 200px;
-  height: 200px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.05);
-  pointer-events: none;
-}
-
-.hero-label {
-  font-size: 0.8rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  opacity: 0.75;
-  margin-bottom: 8px;
-}
-
-.hero-amount {
-  font-size: 2.75rem;
-  font-weight: 800;
-  letter-spacing: -1.5px;
-  line-height: 1;
-  margin-bottom: 28px;
-  transition: color 0.3s;
-}
-
-.hero-amount.negative { color: #fca5a5; }
-
-.hero-stats {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  background: rgba(255,255,255,0.12);
-  border-radius: var(--radius-sm);
-  padding: 14px 20px;
-  backdrop-filter: blur(8px);
-}
-
-.hero-stat {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.hero-divider {
-  width: 1px;
-  height: 36px;
-  background: rgba(255,255,255,0.2);
-  margin: 0 16px;
-}
-
-.hero-stat-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.income-icon {
-  background: rgba(16, 185, 129, 0.25);
-  color: #6ee7b7;
-}
-
-.expense-icon {
-  background: rgba(239, 68, 68, 0.25);
-  color: #fca5a5;
-}
-
-.hero-stat-label {
-  font-size: 0.72rem;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  opacity: 0.65;
-  margin-bottom: 2px;
-}
-
-.hero-stat-value {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-
-/* ── Cards ── */
-.card {
-  background: var(--card-bg);
-  border-radius: var(--radius);
-  padding: 24px;
-  box-shadow: var(--shadow);
-  border: 1px solid var(--border);
-}
-
-.card-title {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--subtle);
-  margin-bottom: 18px;
-}
-
-/* ── Type Toggle ── */
-.type-toggle {
-  display: flex;
-  background: var(--bg);
-  border-radius: var(--radius-sm);
-  padding: 4px;
-  gap: 4px;
-  margin-bottom: 18px;
-  border: 1px solid var(--border);
-}
-
-.toggle-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 9px 12px;
-  border: none;
-  border-radius: 6px;
-  font-family: inherit;
+  padding: 10px 13px;
+  color: #e2e8f0;
   font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-  color: var(--muted);
-  transition: all 0.18s ease;
-}
-
-.toggle-btn:hover:not(.active) {
-  background: var(--card-bg);
-  color: var(--text);
-}
-
-.toggle-btn.active {
-  box-shadow: var(--shadow-sm);
-}
-
-.toggle-btn[data-value="income"].active {
-  background: var(--card-bg);
-  color: var(--income);
-}
-
-.toggle-btn[data-value="expense"].active {
-  background: var(--card-bg);
-  color: var(--expense);
-}
-
-/* ── Fields ── */
-.fields-row {
-  display: grid;
-  grid-template-columns: 1fr 140px;
-  gap: 12px;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.field label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-}
-
-.field input[type="text"],
-.field input[type="number"] {
-  padding: 11px 14px;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: var(--text);
-  background: #fff;
-  transition: border-color 0.15s, box-shadow 0.15s;
   outline: none;
-  width: 100%;
+  transition: border-color .15s, box-shadow .15s;
+}
+.zi::placeholder { color: #54627d; }
+.zi:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); }
+select.zi { appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a99' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center; padding-right: 34px;
 }
 
-.field input::placeholder { color: var(--subtle); font-weight: 400; }
+/* Modal fade/slide */
+.zmodal-back { animation: fade .18s ease; }
+.zmodal-card { animation: rise .22s cubic-bezier(.2,.8,.2,1); }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
 
-.field input[type="text"]:focus,
-.field input[type="number"]:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+.fade-in { animation: fade .25s ease; }
+
+/* RACI cell selects — compact */
+.raci-cell select {
+  appearance: none; -webkit-appearance: none;
+  border: none; background: transparent; text-align: center;
+  font-weight: 800; font-size: .78rem; width: 100%; height: 100%;
+  cursor: pointer; color: inherit; outline: none; padding: 6px 2px;
 }
 
-.input-prefix-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
+/* number spinners off */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
-.input-prefix {
-  position: absolute;
-  left: 13px;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--muted);
-  pointer-events: none;
-  z-index: 1;
-}
-
-.input-prefix-wrap input[type="number"] {
-  padding-left: 26px;
-}
-
-/* hide number spinners */
-input[type="number"]::-webkit-inner-spin-button,
-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
-input[type="number"] { -moz-appearance: textfield; }
-
-.error-msg {
-  color: var(--expense);
-  font-size: 0.8rem;
-  font-weight: 500;
-  min-height: 1.1em;
-  margin: 10px 0 6px;
-}
-
-/* ── Submit Button ── */
-.btn-add {
-  width: 100%;
-  margin-top: 14px;
-  padding: 13px 20px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: 0.95rem;
-  font-weight: 700;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  letter-spacing: 0.01em;
-  transition: opacity 0.15s, transform 0.1s, box-shadow 0.15s;
-  box-shadow: 0 4px 12px rgba(79,70,229,0.3);
-}
-
-.btn-add:hover {
-  opacity: 0.92;
-  box-shadow: 0 6px 16px rgba(79,70,229,0.38);
-}
-
-.btn-add:active { transform: scale(0.985); }
-
-/* ── Transaction List ── */
-#transaction-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 32px 0 20px;
-  color: var(--subtle);
-}
-
-.empty-state p {
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.empty-state span {
-  font-size: 0.82rem;
-}
-
-/* ── Transaction Item ── */
-.transaction-item {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  padding: 13px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  transition: transform 0.15s, box-shadow 0.15s;
-  animation: slideIn 0.2s ease;
-}
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.transaction-item:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
-
-.tx-badge {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.transaction-item.income .tx-badge {
-  background: var(--income-light);
-  color: var(--income);
-}
-
-.transaction-item.expense .tx-badge {
-  background: var(--expense-light);
-  color: var(--expense);
-}
-
-.tx-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.tx-desc {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tx-type-label {
-  font-size: 0.72rem;
-  font-weight: 500;
-  text-transform: capitalize;
-  margin-top: 2px;
-}
-
-.transaction-item.income .tx-type-label { color: var(--income); }
-.transaction-item.expense .tx-type-label { color: var(--expense); }
-
-.tx-amount {
-  font-size: 0.95rem;
-  font-weight: 700;
-  flex-shrink: 0;
-  letter-spacing: -0.3px;
-}
-
-.transaction-item.income .tx-amount { color: var(--income); }
-.transaction-item.expense .tx-amount { color: var(--expense); }
-
-.btn-delete {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--subtle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  transition: color 0.15s, background 0.15s;
-  flex-shrink: 0;
-  padding: 0;
-}
-
-.btn-delete:hover {
-  color: var(--expense);
-  background: var(--expense-light);
-}
-
-/* ── Responsive ── */
-@media (max-width: 400px) {
-  .fields-row { grid-template-columns: 1fr; }
-  .hero-amount { font-size: 2.2rem; }
-}
+.tabnum { font-variant-numeric: tabular-nums; }
