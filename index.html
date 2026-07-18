@@ -116,9 +116,9 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 });
 
 // Map database rows (snake_case) <-> app shape (camelCase)
-const mapEmp    = r => ({ id:r.id, name:r.name, email:r.email, designation:r.designation, department:r.department, trackingArea:r.tracking_area, workStatus:r.work_status, role:r.role||'member' });
+const mapEmp    = r => ({ id:r.id, name:r.name, email:r.email, designation:r.designation, department:r.department, trackingArea:r.tracking_area, workStatus:r.work_status, role:r.role||'member', managerId:r.manager_id });
 const mapClient = r => ({ id:r.id, company:r.company, primaryContact:r.primary_contact });
-const mapProject= r => ({ id:r.id, clientId:r.client_id, name:r.name, description:r.description, status:r.status });
+const mapProject= r => ({ id:r.id, clientId:r.client_id, name:r.name, description:r.description, status:r.status, managerId:r.manager_id, checkerId:r.checker_id });
 const mapTask   = r => ({ id:r.id, projectId:r.project_id, primaryTask:r.primary_task, subTask:r.sub_task, detailedTask:r.detailed_task, developerId:r.developer_id, checkerId:r.checker_id, startDate:r.start_date, endDate:r.end_date, status:r.status });
 const mapShift  = r => ({ id:r.id, employeeId:r.employee_id, day:r.day, start:r.start_time, end:r.end_time, area:r.area });
 const mapLog    = r => ({ id:r.id, employeeId:r.employee_id, clockIn:r.clock_in, clockOut:r.clock_out, area:r.area });
@@ -144,7 +144,25 @@ async function fetchAll(){
   };
 }
 
-// camelCase task -> DB row (nulls for empty optional fields)
+// camelCase -> DB rows (nulls for empty optional fields)
+const empRow = e => ({
+  name:          e.name,
+  email:         e.email,
+  designation:   e.designation,
+  department:    e.department,
+  tracking_area: e.trackingArea,
+  work_status:   e.workStatus,
+  manager_id:    e.managerId || null,
+});
+
+const projRow = p => ({
+  name:        p.name,
+  description: p.description || null,
+  status:      p.status || 'Active',
+  manager_id:  p.managerId || null,
+  checker_id:  p.checkerId || null,
+});
+
 const taskRow = t => ({
   project_id:   t.projectId,
   primary_task: t.primaryTask || null,
@@ -162,15 +180,16 @@ const taskRow = t => ({
 const store = {
   clockIn:   (empId, area)   => sb.from('logs').insert({ employee_id:empId, clock_in:new Date().toISOString(), clock_out:null, area }),
   clockOut:  (logId)         => sb.from('logs').update({ clock_out:new Date().toISOString() }).eq('id', logId),
-  addEmployee:(e)            => sb.from('employees').insert({ name:e.name, email:e.email, designation:e.designation, department:e.department, tracking_area:e.trackingArea, work_status:e.workStatus }),
+  addEmployee:(e)            => sb.from('employees').insert(empRow(e)),
+  updateEmployee:(id, e)     => sb.from('employees').update(empRow(e)).eq('id', id),
   setEmployeeStatus:(id, ws) => sb.from('employees').update({ work_status:ws }).eq('id', id),
   setEmployeeRole:(id, role) => sb.from('employees').update({ role }).eq('id', id),
   deleteEmployee:(id)        => sb.from('employees').delete().eq('id', id),
   addClient:(c)              => sb.from('clients').insert({ company:c.company, primary_contact:c.primaryContact }),
   deleteClient:(id)          => sb.from('clients').delete().eq('id', id),
   // Projects
-  addProject:(p)             => sb.from('projects').insert({ client_id:p.clientId, name:p.name, description:p.description||null, status:p.status||'Active' }),
-  updateProject:(id, p)      => sb.from('projects').update({ name:p.name, description:p.description||null, status:p.status }).eq('id', id),
+  addProject:(p)             => sb.from('projects').insert({ client_id:p.clientId, ...projRow(p) }),
+  updateProject:(id, p)      => sb.from('projects').update(projRow(p)).eq('id', id),
   deleteProject:(id)         => sb.from('projects').delete().eq('id', id),
   // Tasks
   addTask:(t)                => sb.from('tasks').insert(taskRow(t)),
@@ -1092,8 +1111,8 @@ function ShiftModal({ db, refresh, onClose }){
 /* ============================================================
    STAFF DIRECTORY
    ============================================================ */
-function StaffDirectory({ db, refresh, me, isAdmin }){
-  const [showAdd, setShowAdd] = useState(false);
+function StaffDirectory({ db, refresh, empById, me, isAdmin }){
+  const [empModal, setEmpModal] = useState(null); // null | 'new' | employee (edit)
   const [q, setQ] = useState('');
   const [fStatus, setFStatus] = useState('all');
 
@@ -1120,7 +1139,7 @@ function StaffDirectory({ db, refresh, me, isAdmin }){
           <option value="all">All Statuses</option>
           {Object.keys(WORK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}
         </select>
-        {isAdmin && <button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2.5 rounded-lg"><Icon name="plus" className="w-4 h-4"/>Add Employee</button>}
+        {isAdmin && <button onClick={()=>setEmpModal('new')} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2.5 rounded-lg"><Icon name="plus" className="w-4 h-4"/>Add Employee</button>}
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1140,13 +1159,21 @@ function StaffDirectory({ db, refresh, me, isAdmin }){
                   <div className="text-xs text-brand-300 font-semibold">{e.designation}</div>
                   <div className="text-[11px] text-slate-500 truncate">{e.email}</div>
                 </div>
-                {isAdmin && e.id!==me.id && <button onClick={()=>delEmp(e.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 transition"><Icon name="trash" className="w-4 h-4"/></button>}
+                {isAdmin && <button onClick={()=>setEmpModal(e)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-brand-300 transition" title="Edit employee"><Icon name="pencil" className="w-4 h-4"/></button>}
+                {isAdmin && e.id!==me.id && <button onClick={()=>delEmp(e.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 transition" title="Remove employee"><Icon name="trash" className="w-4 h-4"/></button>}
               </div>
               <div className="flex flex-wrap gap-2 mt-4">
                 <Chip className="bg-ink-700/60 text-slate-300 border-white/10">{e.department}</Chip>
                 <Chip className="bg-ink-700/60 text-slate-300 border-white/10"><Icon name="pin" className="w-3 h-3"/>{e.trackingArea}</Chip>
                 {e.role==='admin' && <Chip className="bg-brand-500/15 text-brand-300 border-brand-500/30">Admin</Chip>}
               </div>
+              {empById[e.managerId] && (
+                <div className="mt-3 flex items-center gap-1.5 text-[11px]">
+                  <span className="text-slate-500">Reports to</span>
+                  <Avatar emp={empById[e.managerId]} size="w-4 h-4 !text-[7px] !rounded-md"/>
+                  <span className="text-slate-300 font-medium truncate">{empById[e.managerId].name}</span>
+                </div>
+              )}
               <div className="mt-4 flex items-center gap-2 flex-wrap">
                 <span className={cls('w-2 h-2 rounded-full', st.dot)}></span>
                 {(isAdmin || e.id===me.id) ? (
@@ -1169,31 +1196,48 @@ function StaffDirectory({ db, refresh, me, isAdmin }){
         })}
       </div>
 
-      {showAdd && <EmployeeModal refresh={refresh} onClose={()=>setShowAdd(false)} />}
+      {empModal && <EmployeeModal db={db} refresh={refresh} employee={empModal==='new'?null:empModal} onClose={()=>setEmpModal(null)} />}
     </div>
   );
 }
 
-function EmployeeModal({ refresh, onClose }){
-  const [f, setF] = useState({ name:'', email:'', designation:DESIGNATIONS[0], department:DEPARTMENTS[0], trackingArea:TRACKING_AREAS[0], workStatus:'Available' });
+function EmployeeModal({ db, refresh, employee, onClose }){
+  const editing = !!employee;
+  const [f, setF] = useState({
+    name:         employee?.name || '',
+    email:        employee?.email || '',
+    designation:  employee?.designation || DESIGNATIONS[0],
+    department:   employee?.department || DEPARTMENTS[0],
+    trackingArea: employee?.trackingArea || TRACKING_AREAS[0],
+    workStatus:   employee?.workStatus || 'Available',
+    managerId:    employee?.managerId || '',
+  });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const up = (k,v) => setF(s=>({...s,[k]:v}));
+
+  // Nobody can be their own reporting manager
+  const managerOptions = db.employees.filter(e=> !editing || e.id!==employee.id);
+
   const submit = async () => {
     if(!f.name.trim()) return setErr('Name is required.');
     if(!f.email.trim() || !f.email.includes('@')) return setErr('A valid email is required.');
     setBusy(true);
-    const { error } = await store.addEmployee({ ...f, name:f.name.trim(), email:f.email.trim() });
+    const payload = { ...f, name:f.name.trim(), email:f.email.trim(), managerId:f.managerId||null };
+    const { error } = editing ? await store.updateEmployee(employee.id, payload) : await store.addEmployee(payload);
     setBusy(false);
-    if(error) return setErr(error.message.includes('duplicate') ? 'That email is already on the roster.' : error.message);
+    if(error) return setErr(String(error.message).includes('duplicate') ? 'That email is already on the roster.' : error.message);
     refresh(); onClose();
   };
+
   return (
-    <Modal title="Add Team Member" subtitle="Onboard a new employee to Zeus AI Hub" onClose={onClose}>
+    <Modal title={editing?'Edit Team Member':'Add Team Member'} subtitle={editing?'Update this employee’s details':'Onboard a new employee to Zeus AI Hub'} onClose={onClose}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <Field label="Full name"><input className="zi" value={f.name} onChange={e=>up('name',e.target.value)} placeholder="Jordan Lee" autoFocus/></Field>
-          <Field label="Email"><input className="zi" value={f.email} onChange={e=>up('email',e.target.value)} placeholder="jordan@zeus.ai"/></Field>
+          <Field label="Email" hint={editing?'This is their sign-in address — changing it changes their access.':'Must be the Google account they sign in with.'}>
+            <input className="zi" value={f.email} onChange={e=>up('email',e.target.value)} placeholder="jordan@zeus.ai"/>
+          </Field>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Designation"><select className="zi" value={f.designation} onChange={e=>up('designation',e.target.value)}>{DESIGNATIONS.map(d=><option key={d}>{d}</option>)}</select></Field>
@@ -1203,10 +1247,16 @@ function EmployeeModal({ refresh, onClose }){
           <Field label="Default tracking area"><select className="zi" value={f.trackingArea} onChange={e=>up('trackingArea',e.target.value)}>{TRACKING_AREAS.map(a=><option key={a}>{a}</option>)}</select></Field>
           <Field label="Work status"><select className="zi" value={f.workStatus} onChange={e=>up('workStatus',e.target.value)}>{Object.keys(WORK_STATUSES).map(s=><option key={s}>{s}</option>)}</select></Field>
         </div>
+        <Field label="Reporting manager">
+          <select className="zi" value={f.managerId} onChange={e=>up('managerId',e.target.value)}>
+            <option value="">— None —</option>
+            {managerOptions.map(e=><option key={e.id} value={e.id}>{e.name} · {e.designation}</option>)}
+          </select>
+        </Field>
         {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
         <div className="flex gap-3 pt-1">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
-          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Adding…':'Add Employee'}</button>
+          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Saving…':(editing?'Save changes':'Add Employee')}</button>
         </div>
       </div>
     </Modal>
@@ -1216,7 +1266,7 @@ function EmployeeModal({ refresh, onClose }){
 /* ============================================================
    CLIENT MANAGEMENT
    ============================================================ */
-function ClientManagement({ db, refresh, isAdmin }){
+function ClientManagement({ db, refresh, empById, isAdmin }){
   const [showAddClient, setShowAddClient] = useState(false);
   const [projModal, setProjModal] = useState(null); // null | {clientId} (new) | project (edit)
 
@@ -1280,14 +1330,23 @@ function ClientManagement({ db, refresh, isAdmin }){
                   {projects.map(p=>{
                     const pt = tasksByProject[p.id]||[];
                     const pdone = pt.filter(t=>t.status==='Completed').length;
+                    const pm = empById[p.managerId], pc = empById[p.checkerId];
                     return (
-                      <div key={p.id} className="flex items-center gap-2 rounded-lg bg-ink-800/50 border border-white/5 px-3 py-2 group/proj">
-                        <Icon name="folder" className="w-3.5 h-3.5 text-brand-300 shrink-0"/>
-                        <span className="text-sm font-semibold text-white truncate flex-1">{p.name}</span>
-                        <span className="text-[10px] text-slate-500 whitespace-nowrap">{pdone}/{pt.length} done</span>
-                        <Chip className={projStatusChip(p.status)}>{p.status}</Chip>
-                        {isAdmin && <button onClick={()=>setProjModal(p)} className="opacity-0 group-hover/proj:opacity-100 text-slate-500 hover:text-brand-300 transition"><Icon name="pencil" className="w-3.5 h-3.5"/></button>}
-                        {isAdmin && <button onClick={()=>delProject(p.id)} className="opacity-0 group-hover/proj:opacity-100 text-slate-500 hover:text-rose-400 transition"><Icon name="trash" className="w-3.5 h-3.5"/></button>}
+                      <div key={p.id} className="rounded-lg bg-ink-800/50 border border-white/5 px-3 py-2 group/proj">
+                        <div className="flex items-center gap-2">
+                          <Icon name="folder" className="w-3.5 h-3.5 text-brand-300 shrink-0"/>
+                          <span className="text-sm font-semibold text-white truncate flex-1">{p.name}</span>
+                          <span className="text-[10px] text-slate-500 whitespace-nowrap">{pdone}/{pt.length} done</span>
+                          <Chip className={projStatusChip(p.status)}>{p.status}</Chip>
+                          {isAdmin && <button onClick={()=>setProjModal(p)} className="opacity-0 group-hover/proj:opacity-100 text-slate-500 hover:text-brand-300 transition" title="Edit project"><Icon name="pencil" className="w-3.5 h-3.5"/></button>}
+                          {isAdmin && <button onClick={()=>delProject(p.id)} className="opacity-0 group-hover/proj:opacity-100 text-slate-500 hover:text-rose-400 transition" title="Delete project"><Icon name="trash" className="w-3.5 h-3.5"/></button>}
+                        </div>
+                        {(pm||pc) && (
+                          <div className="flex items-center gap-4 mt-1.5 pl-5 text-[11px]">
+                            {pm && <span className="flex items-center gap-1.5"><span className="text-slate-500">PM</span><Avatar emp={pm} size="w-4 h-4 !text-[7px] !rounded-md"/><span className="text-slate-300 truncate max-w-[110px]">{pm.name}</span></span>}
+                            {pc && <span className="flex items-center gap-1.5"><span className="text-slate-500">Checker</span><Avatar emp={pc} size="w-4 h-4 !text-[7px] !rounded-md"/><span className="text-slate-300 truncate max-w-[110px]">{pc.name}</span></span>}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -1309,15 +1368,18 @@ function ProjectModal({ db, refresh, clientId, project, onClose }){
   const [name, setName] = useState(project?.name || '');
   const [description, setDescription] = useState(project?.description || '');
   const [status, setStatus] = useState(project?.status || 'Active');
+  const [managerId, setManagerId] = useState(project?.managerId || '');
+  const [checkerId, setCheckerId] = useState(project?.checkerId || '');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   const client = db.clients.find(c=>c.id===clientId);
   const submit = async () => {
     if(!name.trim()) return setErr('Project name is required.');
     setBusy(true);
+    const payload = { name:name.trim(), description, status, managerId:managerId||null, checkerId:checkerId||null };
     const { error } = editing
-      ? await store.updateProject(project.id, { name:name.trim(), description, status })
-      : await store.addProject({ clientId, name:name.trim(), description, status });
+      ? await store.updateProject(project.id, payload)
+      : await store.addProject({ clientId, ...payload });
     setBusy(false);
     if(error) return setErr(error.message);
     refresh(); onClose();
@@ -1327,6 +1389,20 @@ function ProjectModal({ db, refresh, clientId, project, onClose }){
       <div className="space-y-4">
         <Field label="Project name"><input className="zi" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Loyalty App Revamp" autoFocus/></Field>
         <Field label="Description (optional)"><input className="zi" value={description} onChange={e=>setDescription(e.target.value)} placeholder="Short summary"/></Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Project manager">
+            <select className="zi" value={managerId} onChange={e=>setManagerId(e.target.value)}>
+              <option value="">— None —</option>
+              {db.employees.map(e=><option key={e.id} value={e.id}>{e.name} · {e.designation}</option>)}
+            </select>
+          </Field>
+          <Field label="Checker">
+            <select className="zi" value={checkerId} onChange={e=>setCheckerId(e.target.value)}>
+              <option value="">— None —</option>
+              {db.employees.map(e=><option key={e.id} value={e.id}>{e.name} · {e.designation}</option>)}
+            </select>
+          </Field>
+        </div>
         <Field label="Status"><select className="zi" value={status} onChange={e=>setStatus(e.target.value)}>{PROJECT_STATUSES.map(s=><option key={s}>{s}</option>)}</select></Field>
         {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
         <div className="flex gap-3 pt-1">
