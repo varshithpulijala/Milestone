@@ -68,15 +68,11 @@ const WORK_STATUSES = {
 const TASK_STATUSES = {
   'Not Started': { chip:'bg-slate-500/15 text-slate-300 border-slate-500/30', bar:'bg-slate-400' },
   'In Progress': { chip:'bg-blue-500/15 text-blue-300 border-blue-500/30',    bar:'bg-blue-400' },
-  'Review':      { chip:'bg-amber-500/15 text-amber-300 border-amber-500/30', bar:'bg-amber-400' },
+  'In Review':   { chip:'bg-amber-500/15 text-amber-300 border-amber-500/30', bar:'bg-amber-400' },
+  'Blocked':     { chip:'bg-rose-500/15 text-rose-300 border-rose-500/30',    bar:'bg-rose-400' },
   'Completed':   { chip:'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', bar:'bg-emerald-400' },
 };
-const RACI = {
-  'R': { label:'Responsible', cell:'bg-sky-500/20 text-sky-300',    solid:'bg-sky-500' },
-  'A': { label:'Accountable', cell:'bg-amber-500/20 text-amber-300', solid:'bg-amber-500' },
-  'C': { label:'Consulted',   cell:'bg-violet-500/20 text-violet-300', solid:'bg-violet-500' },
-  'I': { label:'Informed',    cell:'bg-slate-500/20 text-slate-300', solid:'bg-slate-500' },
-};
+const PROJECT_STATUSES = ['Active','On Hold','Completed'];
 const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 
 /* ============================================================
@@ -122,28 +118,44 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 // Map database rows (snake_case) <-> app shape (camelCase)
 const mapEmp    = r => ({ id:r.id, name:r.name, email:r.email, designation:r.designation, department:r.department, trackingArea:r.tracking_area, workStatus:r.work_status, role:r.role||'member' });
 const mapClient = r => ({ id:r.id, company:r.company, primaryContact:r.primary_contact });
-const mapTask   = r => ({ id:r.id, name:r.name, clientId:r.client_id, dueDate:r.due_date, status:r.status, raci:r.raci||{} });
+const mapProject= r => ({ id:r.id, clientId:r.client_id, name:r.name, description:r.description, status:r.status });
+const mapTask   = r => ({ id:r.id, projectId:r.project_id, primaryTask:r.primary_task, subTask:r.sub_task, detailedTask:r.detailed_task, developerId:r.developer_id, checkerId:r.checker_id, startDate:r.start_date, endDate:r.end_date, status:r.status });
 const mapShift  = r => ({ id:r.id, employeeId:r.employee_id, day:r.day, start:r.start_time, end:r.end_time, area:r.area });
 const mapLog    = r => ({ id:r.id, employeeId:r.employee_id, clockIn:r.clock_in, clockOut:r.clock_out, area:r.area });
 
 async function fetchAll(){
-  const [emp, cli, tsk, shf, lg] = await Promise.all([
+  const [emp, cli, prj, tsk, shf, lg] = await Promise.all([
     sb.from('employees').select('*').order('created_at'),
     sb.from('clients').select('*').order('created_at'),
+    sb.from('projects').select('*').order('created_at'),
     sb.from('tasks').select('*').order('created_at'),
     sb.from('shifts').select('*'),
     sb.from('logs').select('*').order('clock_in', { ascending:false }),
   ]);
-  const err = emp.error||cli.error||tsk.error||shf.error||lg.error;
+  const err = emp.error||cli.error||prj.error||tsk.error||shf.error||lg.error;
   if(err) throw err;
   return {
     employees:(emp.data||[]).map(mapEmp),
     clients:(cli.data||[]).map(mapClient),
+    projects:(prj.data||[]).map(mapProject),
     tasks:(tsk.data||[]).map(mapTask),
     shifts:(shf.data||[]).map(mapShift),
     logs:(lg.data||[]).map(mapLog),
   };
 }
+
+// camelCase task -> DB row (nulls for empty optional fields)
+const taskRow = t => ({
+  project_id:   t.projectId,
+  primary_task: t.primaryTask || null,
+  sub_task:     t.subTask || null,
+  detailed_task:t.detailedTask,
+  developer_id: t.developerId || null,
+  checker_id:   t.checkerId || null,
+  start_date:   t.startDate || null,
+  end_date:     t.endDate || null,
+  status:       t.status || 'Not Started',
+});
 
 // All writes. Each returns a promise; callers refresh() afterwards, and realtime
 // pushes the same changes to everyone else's screens.
@@ -156,14 +168,16 @@ const store = {
   deleteEmployee:(id)        => sb.from('employees').delete().eq('id', id),
   addClient:(c)              => sb.from('clients').insert({ company:c.company, primary_contact:c.primaryContact }),
   deleteClient:(id)          => sb.from('clients').delete().eq('id', id),
-  addTask:(t)                => sb.from('tasks').insert({ name:t.name, client_id:t.clientId, due_date:t.dueDate, status:t.status, raci:t.raci||{} }),
+  // Projects
+  addProject:(p)             => sb.from('projects').insert({ client_id:p.clientId, name:p.name, description:p.description||null, status:p.status||'Active' }),
+  updateProject:(id, p)      => sb.from('projects').update({ name:p.name, description:p.description||null, status:p.status }).eq('id', id),
+  deleteProject:(id)         => sb.from('projects').delete().eq('id', id),
+  // Tasks
+  addTask:(t)                => sb.from('tasks').insert(taskRow(t)),
+  addTasks:(list)            => sb.from('tasks').insert(list.map(taskRow)),
+  updateTask:(id, t)         => sb.from('tasks').update(taskRow(t)).eq('id', id),
   deleteTask:(id)            => sb.from('tasks').delete().eq('id', id),
   setTaskStatus:(id, status) => sb.rpc('set_task_status', { p_task:id, p_status:status }),
-  setRaci:(task, empId, role)=> {
-    const raci = { ...task.raci };
-    if(role==='') delete raci[empId]; else raci[empId] = role;
-    return sb.from('tasks').update({ raci }).eq('id', task.id);
-  },
   addShift: async (s) => {
     await sb.from('shifts').delete().eq('employee_id', s.employeeId).eq('day', s.day);
     return sb.from('shifts').insert({ employee_id:s.employeeId, day:s.day, start_time:s.start, end_time:s.end, area:s.area });
@@ -195,6 +209,8 @@ function Icon({ name, className='w-5 h-5' }){
     pin:'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z M12 10a1 1 0 1 0 0-2 1 1 0 0 0 0 2',
     download:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
     upload:'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12',
+    pencil:'M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z',
+    folder:'M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z',
   }[name] || '';
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -320,7 +336,7 @@ function NoAccess({ email }){
    ============================================================ */
 function App(){
   const [session, setSession] = useState(undefined); // undefined = checking, null = logged out
-  const [db, setDb] = useState({ employees:[], clients:[], tasks:[], shifts:[], logs:[] });
+  const [db, setDb] = useState({ employees:[], clients:[], projects:[], tasks:[], shifts:[], logs:[] });
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState('dashboard');
   const [now, setNow] = useState(Date.now());
@@ -347,7 +363,7 @@ function App(){
     setLoaded(false);
     refresh();
     const ch = sb.channel('zeus-all');
-    ['employees','clients','tasks','shifts','logs'].forEach(t=>
+    ['employees','clients','projects','tasks','shifts','logs'].forEach(t=>
       ch.on('postgres_changes', { event:'*', schema:'public', table:t }, ()=> refresh()));
     ch.subscribe();
     return ()=> { sb.removeChannel(ch); };
@@ -355,11 +371,12 @@ function App(){
 
   const empById = useMemo(()=>Object.fromEntries(db.employees.map(e=>[e.id,e])), [db.employees]);
   const clientById = useMemo(()=>Object.fromEntries(db.clients.map(c=>[c.id,c])), [db.clients]);
+  const projectById = useMemo(()=>Object.fromEntries(db.projects.map(p=>[p.id,p])), [db.projects]);
   const me = useMemo(()=> db.employees.find(e=> (e.email||'').toLowerCase() === (session?.user?.email||'').toLowerCase()) || null, [db.employees, session]);
 
   const nav = [
     { id:'dashboard', label:'Dashboard Overview', icon:'dashboard' },
-    { id:'raci',      label:'RACI Matrix',        icon:'grid' },
+    { id:'raci',      label:'Task Tracker',       icon:'grid' },
     { id:'rota',      label:'Rota & Time Tracking', icon:'clock' },
     { id:'staff',     label:'Staff Directory',    icon:'users' },
     { id:'clients',   label:'Client Management',  icon:'briefcase' },
@@ -371,7 +388,7 @@ function App(){
   if(!me) return <NoAccess email={session.user.email} />;
 
   const isAdmin = me.role === 'admin';
-  const ctx = { db, refresh, empById, clientById, me, isAdmin, now, setView };
+  const ctx = { db, refresh, empById, clientById, projectById, me, isAdmin, now, setView };
 
   return (
     <div className="relative z-10 flex min-h-screen">
@@ -404,7 +421,7 @@ function App(){
         <Topbar {...ctx} nav={nav} view={view} />
         <main className="flex-1 p-5 md:p-7 max-w-[1500px] w-full mx-auto fade-in" key={view}>
           {view==='dashboard' && <Dashboard {...ctx} />}
-          {view==='raci' && <RaciMatrix {...ctx} />}
+          {view==='raci' && <TaskTracker {...ctx} />}
           {view==='rota' && <Rota {...ctx} />}
           {view==='staff' && <StaffDirectory {...ctx} />}
           {view==='clients' && <ClientManagement {...ctx} />}
@@ -488,7 +505,7 @@ function MetricCard({ icon, label, value, sub, tone }){
 
 function Dashboard({ db, empById, clientById, setView }){
   const activeTasks = db.tasks.filter(t=>t.status!=='Completed');
-  const overdue = db.tasks.filter(t=>t.status!=='Completed' && t.dueDate && t.dueDate < todayISO());
+  const overdue = db.tasks.filter(t=>t.status!=='Completed' && t.endDate && t.endDate < todayISO());
   const clockedIn = db.logs.filter(l=>!l.clockOut);
   const completed = db.tasks.filter(t=>t.status==='Completed').length;
 
@@ -515,18 +532,18 @@ function Dashboard({ db, empById, clientById, setView }){
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard icon="bolt"   tone="indigo"  label="Active Tasks"        value={activeTasks.length} sub={`${completed} completed`} />
-        <MetricCard icon="pulse"  tone="emerald" label="Clocked-in Staff"    value={clockedIn.length}   sub={`of ${db.employees.length} team members`} />
-        <MetricCard icon="alert"  tone="rose"    label="Overdue Deliverables" value={overdue.length}     sub={overdue.length? 'needs attention':'all on track'} />
-        <MetricCard icon="briefcase" tone="cyan" label="Active Clients"       value={db.clients.length}  sub={`${db.tasks.length} deliverables`} />
+        <MetricCard icon="bolt"   tone="indigo"  label="Active Tasks"     value={activeTasks.length} sub={`${completed} completed`} />
+        <MetricCard icon="pulse"  tone="emerald" label="Clocked-in Staff" value={clockedIn.length}   sub={`of ${db.employees.length} team members`} />
+        <MetricCard icon="alert"  tone="rose"    label="Overdue Tasks"    value={overdue.length}     sub={overdue.length? 'needs attention':'all on track'} />
+        <MetricCard icon="folder" tone="cyan"    label="Projects"         value={db.projects.length} sub={`${db.clients.length} clients · ${db.tasks.length} tasks`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Tasks by status */}
         <div className="glass rounded-2xl p-6 lg:col-span-2">
           <div className="flex items-center justify-between mb-5">
-            <h3 className="font-bold text-white">Deliverables by Status</h3>
-            <button onClick={()=>setView('raci')} className="text-xs font-semibold text-brand-400 hover:text-brand-300">Open RACI →</button>
+            <h3 className="font-bold text-white">Tasks by Status</h3>
+            <button onClick={()=>setView('raci')} className="text-xs font-semibold text-brand-400 hover:text-brand-300">Open Task Tracker →</button>
           </div>
           <div className="space-y-4">
             {byStatus.map(({s,n})=>(
@@ -609,252 +626,299 @@ function Dashboard({ db, empById, clientById, setView }){
 }
 
 /* ============================================================
-   RACI MATRIX
+   TASK TRACKER  (Client → Project → Tasks)
    ============================================================ */
-function RaciMatrix({ db, refresh, empById, clientById, isAdmin }){
+function PersonTag({ emp }){
+  return <div className="flex items-center gap-1.5"><Avatar emp={emp} size="w-6 h-6 !text-[9px]"/><span className="text-xs text-slate-200 truncate max-w-[120px]">{emp.name}</span></div>;
+}
+
+function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin }){
   const [fClient, setFClient] = useState('all');
-  const [fEmp, setFEmp] = useState('all');
+  const [fProject, setFProject] = useState('all');
+  const [fPerson, setFPerson] = useState('all');
   const [fStatus, setFStatus] = useState('all');
-  const [showTask, setShowTask] = useState(false);
-  const [ioBusy, setIoBusy] = useState(false);
-  const fileRef = useRef(null);
+  const [editTask, setEditTask] = useState(null);   // null | 'new' | taskObj
+  const [showImport, setShowImport] = useState(false);
 
-  const emps = db.employees;
-  const columns = fEmp==='all' ? emps : emps.filter(e=>e.id===fEmp);
+  const projectsForClient = fClient==='all' ? db.projects : db.projects.filter(p=>p.clientId===fClient);
 
-  let tasks = db.tasks;
-  if(fClient!=='all') tasks = tasks.filter(t=>t.clientId===fClient);
-  if(fStatus!=='all') tasks = tasks.filter(t=>t.status===fStatus);
-  if(fEmp!=='all')    tasks = tasks.filter(t=>t.raci[fEmp]);
+  const tasks = db.tasks.filter(t=>{
+    const p = projectById[t.projectId]; if(!p) return false;
+    if(fClient!=='all' && p.clientId!==fClient) return false;
+    if(fProject!=='all' && t.projectId!==fProject) return false;
+    if(fPerson!=='all' && t.developerId!==fPerson && t.checkerId!==fPerson) return false;
+    if(fStatus!=='all' && t.status!==fStatus) return false;
+    return true;
+  });
 
-  // group by client
   const groups = {};
-  tasks.forEach(t=>{ (groups[t.clientId] = groups[t.clientId]||[]).push(t); });
+  tasks.forEach(t=>{ (groups[t.projectId]=groups[t.projectId]||[]).push(t); });
+  Object.values(groups).forEach(list=> list.sort((a,b)=>
+    (a.primaryTask||'').localeCompare(b.primaryTask||'') ||
+    (a.subTask||'').localeCompare(b.subTask||'') ||
+    (a.detailedTask||'').localeCompare(b.detailedTask||'')));
 
-  const setRole = async (task, empId, role) => { await store.setRaci(task, empId, role); refresh(); };
-  const setTaskStatus = async (taskId, status) => { await store.setTaskStatus(taskId, status); refresh(); };
-  const delTask = async taskId => { await store.deleteTask(taskId); refresh(); };
+  const setStatus = async (id, status) => { await store.setTaskStatus(id, status); refresh(); };
+  const delTask = async (id) => { if(!confirm('Delete this task?')) return; await store.deleteTask(id); refresh(); };
 
-  // ── Excel export: one row per deliverable, RACI names grouped by role ──
-  const ROLE_COLS = { Responsible:'R', Accountable:'A', Consulted:'C', Informed:'I' };
   const exportXlsx = () => {
-    const rows = tasks.map(t=>{
-      const buckets = { R:[], A:[], C:[], I:[] };
-      Object.entries(t.raci||{}).forEach(([eid, r])=>{ if(buckets[r] && empById[eid]) buckets[r].push(empById[eid].name); });
-      return {
-        Task: t.name,
-        Client: clientById[t.clientId]?.company || '',
-        'Due Date': t.dueDate || '',
-        Status: t.status,
-        Responsible: buckets.R.join(', '),
-        Accountable: buckets.A.join(', '),
-        Consulted: buckets.C.join(', '),
-        Informed: buckets.I.join(', '),
-      };
-    });
-    const header = ['Task','Client','Due Date','Status','Responsible','Accountable','Consulted','Informed'];
-    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [], { header });
-    if(!rows.length) XLSX.utils.sheet_add_aoa(ws, [header]); // template with just headers
-    ws['!cols'] = header.map((h,i)=>({ wch: i===0?30:(i<4?15:22) }));
+    const rows = tasks.map(t=>({
+      'Primary Task': t.primaryTask||'',
+      'Sub task': t.subTask||'',
+      'Detailed Task': t.detailedTask||'',
+      'Developer': empById[t.developerId]?.name || '',
+      'Start date': t.startDate||'',
+      'End date': t.endDate||'',
+      'Current status': t.status||'',
+      'Checker': empById[t.checkerId]?.name || '',
+    }));
+    const header = ['Primary Task','Sub task','Detailed Task','Developer','Start date','End date','Current status','Checker'];
+    const ws = XLSX.utils.json_to_sheet(rows, { header });
+    if(!rows.length) XLSX.utils.sheet_add_aoa(ws, [header]);
+    ws['!cols'] = header.map((h,i)=>({ wch: i<3?26:16 }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Deliverables');
-    XLSX.writeFile(wb, `zeus-deliverables-${todayISO()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'Tasks');
+    XLSX.writeFile(wb, `zeus-tasks-${todayISO()}.xlsx`);
   };
 
-  // ── Excel import: bulk-create deliverables from a spreadsheet ──
-  const onImportFile = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if(!file) return;
-    setIoBusy(true);
-    try {
-      const wb = XLSX.read(await file.arrayBuffer(), { cellDates:true });
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:'' });
-
-      const clientByName = {}; db.clients.forEach(c=> clientByName[c.company.trim().toLowerCase()] = c.id);
-      const empByKey = {}; db.employees.forEach(em=>{ empByKey[em.name.trim().toLowerCase()] = em.id; if(em.email) empByKey[em.email.trim().toLowerCase()] = em.id; });
-      const validStatus = new Set(Object.keys(TASK_STATUSES));
-
-      let created=0, newClients=0, skipped=0; const unmatched = new Set();
-      for(const row of rows){
-        const name = String(row.Task || row.Deliverable || '').trim();
-        const clientName = String(row.Client || '').trim();
-        if(!name || !clientName){ if(name||clientName) skipped++; continue; }
-        let clientId = clientByName[clientName.toLowerCase()];
-        if(!clientId){
-          const { data, error } = await sb.from('clients').insert({ company:clientName, primary_contact:'—' }).select('id').single();
-          if(error){ skipped++; continue; }
-          clientId = data.id; clientByName[clientName.toLowerCase()] = clientId; newClients++;
-        }
-        let status = String(row.Status || '').trim();
-        if(!validStatus.has(status)) status = 'Not Started';
-        const raci = {};
-        Object.entries(ROLE_COLS).forEach(([col, letter])=>{
-          String(row[col] || '').split(',').map(s=>s.trim()).filter(Boolean).forEach(nm=>{
-            const id = empByKey[nm.toLowerCase()];
-            if(id) raci[id] = letter; else unmatched.add(nm);
-          });
-        });
-        const { error } = await store.addTask({ name, clientId, dueDate: toISODate(row['Due Date'] || row.Due || row.Deadline), status, raci });
-        if(error) skipped++; else created++;
-      }
-      await refresh();
-      let msg = `Imported ${created} deliverable${created===1?'':'s'}.`;
-      if(newClients) msg += ` Created ${newClients} new client${newClients===1?'':'s'}.`;
-      if(skipped) msg += ` Skipped ${skipped} row${skipped===1?'':'s'} (missing task or client name).`;
-      if(unmatched.size) msg += `\n\nNot found on the staff roster — left unassigned:\n• ${[...unmatched].join('\n• ')}`;
-      alert(msg);
-    } catch(err){
-      alert('Import failed: ' + (err.message || err));
-    } finally {
-      setIoBusy(false);
-    }
-  };
+  const noProjects = db.projects.length===0;
 
   return (
     <div className="space-y-5">
-      {/* Filters */}
+      {/* Filters + actions */}
       <div className="glass rounded-2xl p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mr-1"><Icon name="filter" className="w-4 h-4"/>Filter</div>
-        <select className="zi !w-auto !py-2 text-sm" value={fClient} onChange={e=>setFClient(e.target.value)}>
+        <select className="zi !w-auto !py-2 text-sm" value={fClient} onChange={e=>{ setFClient(e.target.value); setFProject('all'); }}>
           <option value="all">All Clients</option>
           {db.clients.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
         </select>
-        <select className="zi !w-auto !py-2 text-sm" value={fEmp} onChange={e=>setFEmp(e.target.value)}>
-          <option value="all">All Employees</option>
-          {emps.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+        <select className="zi !w-auto !py-2 text-sm" value={fProject} onChange={e=>setFProject(e.target.value)}>
+          <option value="all">All Projects</option>
+          {projectsForClient.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <select className="zi !w-auto !py-2 text-sm" value={fPerson} onChange={e=>setFPerson(e.target.value)}>
+          <option value="all">Anyone (dev/checker)</option>
+          {db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
         <select className="zi !w-auto !py-2 text-sm" value={fStatus} onChange={e=>setFStatus(e.target.value)}>
           <option value="all">Any Status</option>
           {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}
         </select>
         <div className="flex-1"></div>
-        <div className="hidden md:flex items-center gap-2 text-[11px]">
-          {Object.entries(RACI).map(([k,v])=>(
-            <span key={k} className="flex items-center gap-1.5 text-slate-400"><span className={cls('w-4 h-4 rounded grid place-items-center text-white font-black text-[10px]', v.solid)}>{k}</span>{v.label}</span>
-          ))}
-        </div>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onImportFile} />
-        {isAdmin && <button onClick={()=>fileRef.current && fileRef.current.click()} disabled={ioBusy} title="Import deliverables from Excel/CSV"
-          className="flex items-center gap-1.5 border border-indigo-500/25 text-slate-200 hover:bg-white/5 disabled:opacity-60 text-sm font-semibold px-3 py-2 rounded-lg transition"><Icon name="upload" className="w-4 h-4"/>{ioBusy?'Importing…':'Import'}</button>}
-        <button onClick={exportXlsx} title="Export deliverables to Excel"
+        {isAdmin && <button onClick={()=>setShowImport(true)} disabled={noProjects} title={noProjects?'Create a project first':'Import tasks from Excel/CSV'}
+          className="flex items-center gap-1.5 border border-indigo-500/25 text-slate-200 hover:bg-white/5 disabled:opacity-40 text-sm font-semibold px-3 py-2 rounded-lg transition"><Icon name="upload" className="w-4 h-4"/>Import</button>}
+        <button onClick={exportXlsx} title="Export tasks to Excel"
           className="flex items-center gap-1.5 border border-indigo-500/25 text-slate-200 hover:bg-white/5 text-sm font-semibold px-3 py-2 rounded-lg transition"><Icon name="download" className="w-4 h-4"/>Export</button>
-        {isAdmin && <button onClick={()=>setShowTask(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2 rounded-lg transition"><Icon name="plus" className="w-4 h-4"/>New Task</button>}
+        {isAdmin && <button onClick={()=>setEditTask('new')} disabled={noProjects} title={noProjects?'Create a project first':''}
+          className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm font-bold px-3.5 py-2 rounded-lg transition"><Icon name="plus" className="w-4 h-4"/>New Task</button>}
       </div>
 
-      {/* Matrix */}
-      <div className="glass rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse min-w-[720px]">
-            <thead>
-              <tr className="bg-ink-800/80">
-                <th className="text-left text-xs font-bold text-slate-400 uppercase tracking-wider px-5 py-3 sticky left-0 bg-ink-800/95 backdrop-blur z-10 min-w-[260px]">Deliverable</th>
-                {columns.map(e=>(
-                  <th key={e.id} className="px-2 py-3 min-w-[64px]">
-                    <div className="flex flex-col items-center gap-1.5" title={`${e.name} · ${e.designation}`}>
-                      <Avatar emp={e} size="w-8 h-8"/>
-                      <span className="text-[10px] text-slate-400 font-semibold leading-tight text-center w-16 truncate">{e.name.split(' ')[0]}</span>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {Object.keys(groups).length===0 && (
-                <tr><td colSpan={columns.length+1} className="text-center text-slate-500 py-14 text-sm">No deliverables match these filters.</td></tr>
-              )}
-              {Object.entries(groups).map(([cid, list])=>(
-                <React.Fragment key={cid}>
-                  <tr>
-                    <td colSpan={columns.length+1} className="px-5 py-2 bg-brand-600/10 border-y border-brand-500/15">
-                      <span className="text-xs font-bold text-brand-300 uppercase tracking-wider flex items-center gap-2"><Icon name="briefcase" className="w-3.5 h-3.5"/>{clientById[cid]?.company||'Unassigned'}</span>
-                    </td>
+      {noProjects && (
+        <div className="glass rounded-2xl p-10 text-center text-slate-400 text-sm">
+          No projects yet. Add a client and a project under <b className="text-white">Client Management</b> first, then create or import tasks here.
+        </div>
+      )}
+
+      {!noProjects && Object.keys(groups).length===0 && (
+        <div className="glass rounded-2xl p-10 text-center text-slate-500 text-sm">No tasks match these filters.</div>
+      )}
+
+      {Object.entries(groups).map(([pid, list])=>{
+        const p = projectById[pid];
+        return (
+          <div key={pid} className="glass rounded-2xl overflow-hidden">
+            <div className="px-5 py-3 bg-brand-600/10 border-b border-brand-500/15 flex items-center gap-2">
+              <Icon name="briefcase" className="w-4 h-4 text-brand-300"/>
+              <span className="text-sm font-bold text-white">{clientById[p?.clientId]?.company || 'Unknown client'}</span>
+              <span className="text-slate-600">/</span>
+              <span className="text-sm font-bold text-brand-300">{p?.name || 'Unknown project'}</span>
+              <span className="ml-auto text-[11px] text-slate-500">{list.length} task{list.length===1?'':'s'}</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse min-w-[920px] text-sm">
+                <thead>
+                  <tr className="bg-ink-800/60 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    <th className="px-4 py-2.5">Primary Task</th>
+                    <th className="px-4 py-2.5">Sub task</th>
+                    <th className="px-4 py-2.5">Detailed Task</th>
+                    <th className="px-4 py-2.5">Developer</th>
+                    <th className="px-4 py-2.5">Checker</th>
+                    <th className="px-4 py-2.5">Start</th>
+                    <th className="px-4 py-2.5">End</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    {isAdmin && <th className="px-3 py-2.5"></th>}
                   </tr>
-                  {list.map(t=>{
-                    const isOverdue = t.status!=='Completed' && t.dueDate && t.dueDate < todayISO();
+                </thead>
+                <tbody>
+                  {list.map((t, i)=>{
+                    const prev = list[i-1];
+                    const showPrimary = !prev || prev.primaryTask!==t.primaryTask;
+                    const showSub = showPrimary || prev.subTask!==t.subTask;
+                    const dev = empById[t.developerId];
+                    const chk = empById[t.checkerId];
+                    const overdue = t.status!=='Completed' && t.endDate && t.endDate < todayISO();
                     return (
-                    <tr key={t.id} className="border-b border-white/5 hover:bg-white/[0.02] group">
-                      <td className="px-5 py-2.5 sticky left-0 bg-ink-850/95 backdrop-blur z-10 group-hover:bg-ink-800/95">
-                        <div className="font-semibold text-white text-sm">{t.name}</div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <select value={t.status} onChange={e=>setTaskStatus(t.id, e.target.value)} className={cls('rounded-full text-[10px] font-bold border px-2 py-0.5 appearance-none cursor-pointer outline-none', TASK_STATUSES[t.status].chip)}>
+                      <tr key={t.id} className="border-b border-white/5 hover:bg-white/[0.02] group align-top">
+                        <td className="px-4 py-2.5 font-semibold text-white">{showPrimary ? (t.primaryTask||'—') : ''}</td>
+                        <td className="px-4 py-2.5 text-slate-300">{showSub ? (t.subTask||'—') : ''}</td>
+                        <td className="px-4 py-2.5 text-slate-200">{t.detailedTask}</td>
+                        <td className="px-4 py-2.5">{dev ? <PersonTag emp={dev}/> : <span className="text-slate-600">—</span>}</td>
+                        <td className="px-4 py-2.5">{chk ? <PersonTag emp={chk}/> : <span className="text-slate-600">—</span>}</td>
+                        <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{fmtDate(t.startDate)}</td>
+                        <td className={cls('px-4 py-2.5 text-xs whitespace-nowrap', overdue?'text-rose-400 font-bold':'text-slate-400')}>{overdue&&<Icon name="alert" className="w-3 h-3 inline mr-1"/>}{fmtDate(t.endDate)}</td>
+                        <td className="px-4 py-2.5">
+                          <select value={t.status} onChange={e=>setStatus(t.id, e.target.value)} className={cls('rounded-full text-[10px] font-bold border px-2 py-1 appearance-none cursor-pointer outline-none', (TASK_STATUSES[t.status]||TASK_STATUSES['Not Started']).chip)}>
                             {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s} className="bg-ink-800 text-white">{s}</option>)}
                           </select>
-                          <span className={cls('text-[10px] flex items-center gap-1', isOverdue?'text-rose-400 font-bold':'text-slate-500')}>
-                            {isOverdue&&<Icon name="alert" className="w-3 h-3"/>}{fmtDate(t.dueDate)}
-                          </span>
-                          {isAdmin && <button onClick={()=>delTask(t.id)} className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-rose-400 transition ml-auto"><Icon name="trash" className="w-3.5 h-3.5"/></button>}
-                        </div>
-                      </td>
-                      {columns.map(e=>{
-                        const role = t.raci[e.id]||'';
-                        return (
-                          <td key={e.id} className="p-1 text-center">
-                            <div className={cls('raci-cell rounded-lg h-10 mx-auto w-14 border border-white/5 transition', role?RACI[role].cell:'bg-ink-800/40 text-slate-600', isAdmin&&!role&&'hover:bg-ink-700/60')}>
-                              {isAdmin ? (
-                                <select value={role} onChange={ev=>setRole(t, e.id, ev.target.value)} title={role?RACI[role].label:'Assign role'}>
-                                  <option value="" className="bg-ink-800 text-slate-400">·</option>
-                                  {Object.keys(RACI).map(r=><option key={r} value={r} className="bg-ink-800 text-white">{r} — {RACI[r].label}</option>)}
-                                </select>
-                              ) : (
-                                <div className="h-full grid place-items-center font-extrabold text-sm" title={role?RACI[role].label:''}>{role||'·'}</div>
-                              )}
-                            </div>
+                        </td>
+                        {isAdmin && (
+                          <td className="px-3 py-2.5 whitespace-nowrap text-right">
+                            <button onClick={()=>setEditTask(t)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-brand-300 transition mr-1" title="Edit"><Icon name="pencil" className="w-3.5 h-3.5"/></button>
+                            <button onClick={()=>delTask(t.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition" title="Delete"><Icon name="trash" className="w-3.5 h-3.5"/></button>
                           </td>
-                        );
-                      })}
-                    </tr>
-                  );})}
-                </React.Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
 
-      {showTask && <TaskModal db={db} refresh={refresh} onClose={()=>setShowTask(false)} />}
+      {editTask && <TaskModal db={db} refresh={refresh} task={editTask==='new'?null:editTask} defaultProjectId={fProject!=='all'?fProject:''} onClose={()=>setEditTask(null)} />}
+      {showImport && <ImportModal db={db} refresh={refresh} onClose={()=>setShowImport(false)} />}
     </div>
   );
 }
 
-function TaskModal({ db, refresh, onClose }){
-  const [name, setName] = useState('');
-  const [clientId, setClientId] = useState(db.clients[0]?.id||'');
-  const [dueDate, setDueDate] = useState(offset(7));
-  const [status, setStatus] = useState('Not Started');
+function TaskModal({ db, refresh, task, defaultProjectId, onClose }){
+  const editing = !!task;
+  const [f, setF] = useState({
+    projectId:    task?.projectId    || defaultProjectId || (db.projects[0]?.id || ''),
+    primaryTask:  task?.primaryTask  || '',
+    subTask:      task?.subTask      || '',
+    detailedTask: task?.detailedTask || '',
+    developerId:  task?.developerId  || '',
+    checkerId:    task?.checkerId    || '',
+    startDate:    task?.startDate    || '',
+    endDate:      task?.endDate      || '',
+    status:       task?.status       || 'Not Started',
+  });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const up = (k,v) => setF(s=>({ ...s, [k]:v }));
+
   const submit = async () => {
-    if(!name.trim()) return setErr('Task name is required.');
-    if(!clientId) return setErr('Please pick a client (add one first).');
+    if(!f.projectId) return setErr('Pick a project.');
+    if(!f.detailedTask.trim()) return setErr('Detailed Task is required.');
     setBusy(true);
-    const { error } = await store.addTask({ name:name.trim(), clientId, dueDate, status });
+    const payload = { ...f, detailedTask:f.detailedTask.trim(), developerId:f.developerId||null, checkerId:f.checkerId||null };
+    const { error } = editing ? await store.updateTask(task.id, payload) : await store.addTask(payload);
     setBusy(false);
     if(error) return setErr(error.message);
     refresh(); onClose();
   };
+
   return (
-    <Modal title="New Deliverable" subtitle="Add a task to the RACI matrix" onClose={onClose}>
+    <Modal title={editing?'Edit Task':'New Task'} subtitle="A task under a client's project" onClose={onClose} wide>
       <div className="space-y-4">
-        <Field label="Task / Deliverable name"><input className="zi" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Churn Prediction Model" autoFocus/></Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Client">
-            <select className="zi" value={clientId} onChange={e=>setClientId(e.target.value)}>
-              {db.clients.length===0 && <option value="">No clients yet</option>}
-              {db.clients.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}
-            </select>
-          </Field>
-          <Field label="Due date"><input type="date" className="zi" value={dueDate} onChange={e=>setDueDate(e.target.value)}/></Field>
-        </div>
-        <Field label="Status">
-          <select className="zi" value={status} onChange={e=>setStatus(e.target.value)}>
-            {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}
+        <Field label="Project">
+          <select className="zi" value={f.projectId} onChange={e=>up('projectId', e.target.value)}>
+            {db.projects.length===0 && <option value="">No projects — add one in Client Management</option>}
+            {db.projects.map(p=>{ const c=db.clients.find(x=>x.id===p.clientId); return <option key={p.id} value={p.id}>{(c?.company||'?')+' · '+p.name}</option>; })}
           </select>
         </Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Primary Task"><input className="zi" value={f.primaryTask} onChange={e=>up('primaryTask',e.target.value)} placeholder="e.g. Checkout revamp"/></Field>
+          <Field label="Sub task"><input className="zi" value={f.subTask} onChange={e=>up('subTask',e.target.value)} placeholder="e.g. Payment API"/></Field>
+        </div>
+        <Field label="Detailed Task"><input className="zi" value={f.detailedTask} onChange={e=>up('detailedTask',e.target.value)} placeholder="The specific work item" autoFocus/></Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Developer"><select className="zi" value={f.developerId} onChange={e=>up('developerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+          <Field label="Checker"><select className="zi" value={f.checkerId} onChange={e=>up('checkerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Field label="Start date"><input type="date" className="zi" value={f.startDate||''} onChange={e=>up('startDate',e.target.value)}/></Field>
+          <Field label="End date"><input type="date" className="zi" value={f.endDate||''} onChange={e=>up('endDate',e.target.value)}/></Field>
+          <Field label="Status"><select className="zi" value={f.status} onChange={e=>up('status',e.target.value)}>{Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
+        </div>
         {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
         <div className="flex gap-3 pt-1">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
-          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Creating…':'Create Task'}</button>
+          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Saving…':(editing?'Save changes':'Create Task')}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ImportModal({ db, refresh, onClose }){
+  const [clientId, setClientId] = useState(db.clients[0]?.id || '');
+  const clientProjects = db.projects.filter(p=>p.clientId===clientId);
+  const [projectId, setProjectId] = useState(clientProjects[0]?.id || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const fileRef = useRef(null);
+
+  useEffect(()=>{ const list=db.projects.filter(p=>p.clientId===clientId); setProjectId(list[0]?.id||''); }, [clientId]);
+
+  const pick = (row, keys) => { for(const k of keys){ if(row[k]!=null && String(row[k]).trim()!=='') return row[k]; } return ''; };
+
+  const run = async (e) => {
+    const file = e.target.files && e.target.files[0]; e.target.value='';
+    if(!file) return;
+    if(!projectId){ setErr('Pick a client and project first.'); return; }
+    setBusy(true); setErr('');
+    try {
+      const wb = XLSX.read(await file.arrayBuffer(), { cellDates:true });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:'' });
+      const empByKey = {}; db.employees.forEach(em=>{ empByKey[em.name.trim().toLowerCase()]=em.id; if(em.email) empByKey[em.email.trim().toLowerCase()]=em.id; });
+      const validStatus = new Set(Object.keys(TASK_STATUSES));
+      const unmatched = new Set(); let skipped=0; const toInsert=[];
+      const findEmp = raw => { const nm=String(raw||'').trim(); if(!nm) return null; const id=empByKey[nm.toLowerCase()]; if(!id) unmatched.add(nm); return id||null; };
+      for(const row of rows){
+        const detailed = String(pick(row,['Detailed Task','Detailed task','Task','Detail'])).trim();
+        if(!detailed){ if(Object.values(row).some(v=>String(v).trim())) skipped++; continue; }
+        let status = String(pick(row,['Current status','Current Status','Status'])).trim();
+        if(!validStatus.has(status)) status='Not Started';
+        toInsert.push({
+          projectId,
+          primaryTask: String(pick(row,['Primary Task','Primary task'])).trim() || null,
+          subTask:     String(pick(row,['Sub task','Sub Task','Subtask'])).trim() || null,
+          detailedTask: detailed,
+          developerId: findEmp(pick(row,['Developer','Assignee','Owner'])),
+          checkerId:   findEmp(pick(row,['Checker','Reviewer','QA'])),
+          startDate:   toISODate(pick(row,['Start date','Start Date','Start'])),
+          endDate:     toISODate(pick(row,['End date','End Date','End','Due Date'])),
+          status,
+        });
+      }
+      if(toInsert.length){ const { error } = await store.addTasks(toInsert); if(error) throw error; }
+      await refresh();
+      let msg = `Imported ${toInsert.length} task${toInsert.length===1?'':'s'}.`;
+      if(skipped) msg += ` Skipped ${skipped} row${skipped===1?'':'s'} (no Detailed Task).`;
+      if(unmatched.size) msg += `\n\nNot found on the staff roster — left unassigned:\n• ${[...unmatched].join('\n• ')}`;
+      alert(msg);
+      onClose();
+    } catch(e){ setErr('Import failed: '+(e.message||e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Modal title="Import Tasks" subtitle="From Excel/CSV with your 8 columns" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-xs text-slate-400 leading-relaxed">Columns read: <span className="text-slate-300 font-mono text-[11px]">Primary Task · Sub task · Detailed Task · Developer · Start date · End date · Current status · Checker</span>. Every row imports into the client &amp; project you pick here.</p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Client"><select className="zi" value={clientId} onChange={e=>setClientId(e.target.value)}>{db.clients.length===0&&<option value="">No clients</option>}{db.clients.map(c=><option key={c.id} value={c.id}>{c.company}</option>)}</select></Field>
+          <Field label="Project"><select className="zi" value={projectId} onChange={e=>setProjectId(e.target.value)}>{clientProjects.length===0&&<option value="">No projects for this client</option>}{clientProjects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+        </div>
+        {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
+        <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={run}/>
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
+          <button onClick={()=>fileRef.current&&fileRef.current.click()} disabled={busy||!projectId} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Importing…':'Choose file & import'}</button>
         </div>
       </div>
     </Modal>
@@ -1152,27 +1216,37 @@ function EmployeeModal({ refresh, onClose }){
 /* ============================================================
    CLIENT MANAGEMENT
    ============================================================ */
-function ClientManagement({ db, refresh, empById, isAdmin }){
-  const [showAdd, setShowAdd] = useState(false);
+function ClientManagement({ db, refresh, isAdmin }){
+  const [showAddClient, setShowAddClient] = useState(false);
+  const [projModal, setProjModal] = useState(null); // null | {clientId} (new) | project (edit)
+
   const delClient = async id => {
-    if(!confirm('Delete this client? All its deliverables will be removed too.')) return;
+    if(!confirm('Delete this client? All its projects and tasks will be removed too.')) return;
     await store.deleteClient(id); refresh();
   };
+  const delProject = async id => {
+    if(!confirm('Delete this project? All its tasks will be removed too.')) return;
+    await store.deleteProject(id); refresh();
+  };
+
+  const tasksByProject = {};
+  db.tasks.forEach(t=>{ (tasksByProject[t.projectId]=tasksByProject[t.projectId]||[]).push(t); });
+  const projStatusChip = s => s==='Completed'?'bg-emerald-500/15 text-emerald-300 border-emerald-500/30':s==='On Hold'?'bg-amber-500/15 text-amber-300 border-amber-500/30':'bg-brand-500/15 text-brand-300 border-brand-500/30';
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-400">{db.clients.length} active clients · {db.tasks.length} deliverables in flight</p>
-        {isAdmin && <button onClick={()=>setShowAdd(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2.5 rounded-lg"><Icon name="plus" className="w-4 h-4"/>Add Client</button>}
+        <p className="text-sm text-slate-400">{db.clients.length} clients · {db.projects.length} projects · {db.tasks.length} tasks</p>
+        {isAdmin && <button onClick={()=>setShowAddClient(true)} className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 text-white text-sm font-bold px-3.5 py-2.5 rounded-lg"><Icon name="plus" className="w-4 h-4"/>Add Client</button>}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {db.clients.length===0 && <div className="col-span-full text-center text-slate-500 py-14 text-sm glass rounded-2xl">No clients yet — add your first one.</div>}
         {db.clients.map(c=>{
-          const tasks = db.tasks.filter(t=>t.clientId===c.id);
-          const active = tasks.filter(t=>t.status!=='Completed').length;
-          const done = tasks.filter(t=>t.status==='Completed').length;
-          const pct = tasks.length? Math.round(done/tasks.length*100):0;
+          const projects = db.projects.filter(p=>p.clientId===c.id);
+          const allTasks = projects.flatMap(p=> tasksByProject[p.id]||[]);
+          const done = allTasks.filter(t=>t.status==='Completed').length;
+          const pct = allTasks.length? Math.round(done/allTasks.length*100):0;
           return (
             <div key={c.id} className="glass glass-hover rounded-2xl p-6 group">
               <div className="flex items-start justify-between">
@@ -1187,33 +1261,80 @@ function ClientManagement({ db, refresh, empById, isAdmin }){
               </div>
 
               <div className="grid grid-cols-3 gap-3 mt-5">
-                <Stat label="Active" value={active} />
-                <Stat label="Completed" value={done} />
-                <Stat label="Progress" value={pct+'%'} />
+                <Stat label="Projects" value={projects.length} />
+                <Stat label="Tasks" value={allTasks.length} />
+                <Stat label="Done" value={pct+'%'} />
               </div>
 
               <div className="mt-4">
                 <div className="h-2 rounded-full bg-ink-700 overflow-hidden"><div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{width:pct+'%'}}></div></div>
               </div>
 
-              <div className="mt-4 space-y-1.5">
-                {tasks.slice(0,4).map(t=>(
-                  <div key={t.id} className="flex items-center gap-2 text-xs">
-                    <span className={cls('w-1.5 h-1.5 rounded-full', TASK_STATUSES[t.status].bar)}></span>
-                    <span className="text-slate-300 flex-1 truncate">{t.name}</span>
-                    <span className="text-slate-500">{fmtDate(t.dueDate)}</span>
-                  </div>
-                ))}
-                {tasks.length===0 && <div className="text-xs text-slate-600 italic">No deliverables yet</div>}
-                {tasks.length>4 && <div className="text-[11px] text-slate-500">+{tasks.length-4} more</div>}
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Projects</span>
+                  {isAdmin && <button onClick={()=>setProjModal({ clientId:c.id })} className="text-[11px] font-semibold text-brand-400 hover:text-brand-300 flex items-center gap-1"><Icon name="plus" className="w-3 h-3"/>Add project</button>}
+                </div>
+                <div className="space-y-1.5">
+                  {projects.length===0 && <div className="text-xs text-slate-600 italic">No projects yet</div>}
+                  {projects.map(p=>{
+                    const pt = tasksByProject[p.id]||[];
+                    const pdone = pt.filter(t=>t.status==='Completed').length;
+                    return (
+                      <div key={p.id} className="flex items-center gap-2 rounded-lg bg-ink-800/50 border border-white/5 px-3 py-2 group/proj">
+                        <Icon name="folder" className="w-3.5 h-3.5 text-brand-300 shrink-0"/>
+                        <span className="text-sm font-semibold text-white truncate flex-1">{p.name}</span>
+                        <span className="text-[10px] text-slate-500 whitespace-nowrap">{pdone}/{pt.length} done</span>
+                        <Chip className={projStatusChip(p.status)}>{p.status}</Chip>
+                        {isAdmin && <button onClick={()=>setProjModal(p)} className="opacity-0 group-hover/proj:opacity-100 text-slate-500 hover:text-brand-300 transition"><Icon name="pencil" className="w-3.5 h-3.5"/></button>}
+                        {isAdmin && <button onClick={()=>delProject(p.id)} className="opacity-0 group-hover/proj:opacity-100 text-slate-500 hover:text-rose-400 transition"><Icon name="trash" className="w-3.5 h-3.5"/></button>}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {showAdd && <ClientModal refresh={refresh} onClose={()=>setShowAdd(false)} />}
+      {showAddClient && <ClientModal refresh={refresh} onClose={()=>setShowAddClient(false)} />}
+      {projModal && <ProjectModal db={db} refresh={refresh} clientId={projModal.clientId} project={projModal.id ? projModal : null} onClose={()=>setProjModal(null)} />}
     </div>
+  );
+}
+
+function ProjectModal({ db, refresh, clientId, project, onClose }){
+  const editing = !!project;
+  const [name, setName] = useState(project?.name || '');
+  const [description, setDescription] = useState(project?.description || '');
+  const [status, setStatus] = useState(project?.status || 'Active');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const client = db.clients.find(c=>c.id===clientId);
+  const submit = async () => {
+    if(!name.trim()) return setErr('Project name is required.');
+    setBusy(true);
+    const { error } = editing
+      ? await store.updateProject(project.id, { name:name.trim(), description, status })
+      : await store.addProject({ clientId, name:name.trim(), description, status });
+    setBusy(false);
+    if(error) return setErr(error.message);
+    refresh(); onClose();
+  };
+  return (
+    <Modal title={editing?'Edit Project':'New Project'} subtitle={client?('For '+client.company):''} onClose={onClose}>
+      <div className="space-y-4">
+        <Field label="Project name"><input className="zi" value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Loyalty App Revamp" autoFocus/></Field>
+        <Field label="Description (optional)"><input className="zi" value={description} onChange={e=>setDescription(e.target.value)} placeholder="Short summary"/></Field>
+        <Field label="Status"><select className="zi" value={status} onChange={e=>setStatus(e.target.value)}>{PROJECT_STATUSES.map(s=><option key={s}>{s}</option>)}</select></Field>
+        {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
+        <div className="flex gap-3 pt-1">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
+          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Saving…':(editing?'Save changes':'Add Project')}</button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
