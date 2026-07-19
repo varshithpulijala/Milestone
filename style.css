@@ -30,8 +30,8 @@
   --c-fg:   15 23 42;         /* primary text      */
   --c-hair: 15 23 42;         /* hairline overlays */
   --c-line: 148 163 184;      /* panel borders     */
-  --c-brand-300: 67 56 202;   /* accent text — darker on light for contrast */
-  --c-brand-400: 79 70 229;
+  --c-brand-300: 30 64 175;   /* accent text — darker on light for contrast */
+  --c-brand-400: 29 78 216;
 
   --grid-line: rgba(15, 23, 42, 0.035);
   --page-bg: #f6f7f9;   /* flat, print-clean */
@@ -39,7 +39,7 @@
   --glass-border: rgba(15, 23, 42, 0.09);
   --glass-shadow: 0 1px 2px rgba(15,23,42,.05), 0 8px 24px -12px rgba(15,23,42,.12);
   --glass-shadow-hover: 0 2px 4px rgba(15,23,42,.06), 0 16px 40px -16px rgba(15,23,42,.20);
-  --shadow-glow: 0 1px 2px rgba(15,23,42,.06), 0 10px 30px -12px rgba(79,70,229,.35);
+  --shadow-glow: 0 1px 2px rgba(15,23,42,.06), 0 10px 30px -12px rgba(29,78,216,.28);
   --field-bg: #ffffff;
   --field-border: rgba(15, 23, 42, 0.15);
   --field-text: #0f172a;
@@ -67,25 +67,25 @@ html.dark {
   --c-fg:   255 255 255;
   --c-hair: 255 255 255;
   --c-line: 99 102 241;
-  --c-brand-300: 165 180 252;
-  --c-brand-400: 129 140 248;
+  --c-brand-300: 147 197 253;
+  --c-brand-400: 96 165 250;
 
-  --grid-line: rgba(99, 102, 241, 0.07);
+  --grid-line: rgba(59, 130, 246, 0.06);
   --page-bg:
-    radial-gradient(1200px 600px at 85% -10%, rgba(99, 102, 241, 0.14), transparent 60%),
-    radial-gradient(900px 500px at 0% 110%, rgba(168, 85, 247, 0.10), transparent 55%),
+    radial-gradient(1200px 600px at 85% -10%, rgba(37, 99, 235, 0.12), transparent 60%),
+    radial-gradient(900px 500px at 0% 110%, rgba(15, 118, 178, 0.07), transparent 55%),
     #070a12;
   --glass-bg: linear-gradient(180deg, rgba(20,27,45,.72), rgba(15,21,36,.72));
-  --glass-border: rgba(99, 102, 241, 0.14);
+  --glass-border: rgba(59, 130, 246, 0.14);
   --glass-shadow: none;
-  --glass-shadow-hover: 0 18px 50px -20px rgba(99,102,241,.5);
-  --shadow-glow: 0 0 0 1px rgba(99,102,241,.25), 0 10px 40px -12px rgba(99,102,241,.5);
+  --glass-shadow-hover: 0 18px 50px -20px rgba(37,99,235,.45);
+  --shadow-glow: 0 0 0 1px rgba(37,99,235,.22), 0 10px 40px -12px rgba(37,99,235,.42);
   --field-bg: rgba(7, 10, 18, 0.7);
   --field-border: rgba(99, 102, 241, 0.18);
   --field-text: #e2e8f0;
   --field-placeholder: #54627d;
-  --scroll-thumb: rgba(99, 102, 241, 0.25);
-  --scroll-thumb-hover: rgba(99, 102, 241, 0.45);
+  --scroll-thumb: rgba(59, 130, 246, 0.25);
+  --scroll-thumb-hover: rgba(59, 130, 246, 0.45);
   --caret: #6b7a99;
 }
 
@@ -123,8 +123,8 @@ body {
   width: 64px; height: 64px; border-radius: 18px;
   display: grid; place-items: center;
   font-weight: 900; font-size: 30px; color: #fff;
-  background: linear-gradient(135deg, #6366f1, #a855f7);
-  box-shadow: 0 12px 40px -8px rgba(99,102,241,0.6);
+  background: linear-gradient(135deg, #1d4ed8, #0e7490);
+  box-shadow: 0 12px 40px -8px rgba(29,78,216,0.45);
   animation: pulse 1.6s ease-in-out infinite;
 }
 @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.94); opacity: 0.8; } }
@@ -139,7 +139,7 @@ html.dark .glass { backdrop-filter: blur(14px); }
 
 .glass-hover { transition: border-color .18s, transform .18s, box-shadow .18s; }
 .glass-hover:hover {
-  border-color: rgba(99, 102, 241, 0.4);
+  border-color: rgba(37, 99, 235, 0.35);
   transform: translateY(-2px);
   box-shadow: var(--glass-shadow-hover);
 }
@@ -166,7 +166,7 @@ html.dark .glass { backdrop-filter: blur(14px); }
   transition: border-color .15s, box-shadow .15s;
 }
 .zi::placeholder { color: var(--field-placeholder); }
-.zi:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.18); }
+.zi:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.16); }
 select.zi { appearance: none; -webkit-appearance: none; cursor: pointer;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7a99' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 11px center; padding-right: 34px;

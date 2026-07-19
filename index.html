@@ -54,11 +54,12 @@
             fg:   'rgb(var(--c-fg) / <alpha-value>)',    // primary text
             hair: 'rgb(var(--c-hair) / <alpha-value>)',  // hairline overlays
             line: 'rgb(var(--c-line) / <alpha-value>)',  // panel borders
+            // Corporate blue. 600 is the resting button, 500 the hover.
             brand: {
-              50:'#eef2ff', 200:'#c7d2fe', 700:'#4338ca',
+              50:'#eff6ff', 200:'#bfdbfe', 700:'#1e40af',
               300:'rgb(var(--c-brand-300) / <alpha-value>)',
               400:'rgb(var(--c-brand-400) / <alpha-value>)',
-              500:'#6366f1', 600:'#4f46e5',
+              500:'#2563eb', 600:'#1d4ed8',
             },
           },
           boxShadow: { glow: 'var(--shadow-glow)' },
@@ -101,10 +102,10 @@ const TRACKING_AREAS = ['Remote','Office HQ','On-site Client X','On-site Client 
 // Chips are light-first with a dark: override, so they stay legible in both
 // themes (translucent fills wash out on white).
 const WORK_STATUSES = {
-  'Active':      { dot:'bg-emerald-500', chip:'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30', ring:'dark:shadow-[0_0_12px_-2px_rgba(52,211,153,0.6)]' },
-  'Available':   { dot:'bg-cyan-500',    chip:'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30',                   ring:'dark:shadow-[0_0_12px_-2px_rgba(34,211,238,0.6)]' },
-  'At Capacity': { dot:'bg-amber-500',   chip:'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',             ring:'dark:shadow-[0_0_12px_-2px_rgba(251,191,36,0.6)]' },
-  'OOO':         { dot:'bg-rose-500',    chip:'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/15 dark:text-rose-300 dark:border-rose-500/30',                   ring:'' },
+  'Active':      { dot:'bg-emerald-600', chip:'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30', ring:'' },
+  'Available':   { dot:'bg-brand-600',   chip:'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30',             ring:'' },
+  'At Capacity': { dot:'bg-amber-600',   chip:'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30',             ring:'' },
+  'OOO':         { dot:'bg-slate-500',   chip:'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-500/15 dark:text-slate-300 dark:border-slate-500/30',            ring:'' },
 };
 const TASK_STATUSES = {
   'Not Started': { chip:'bg-slate-100 text-slate-700 border-slate-300 dark:bg-slate-500/15 dark:text-slate-300 dark:border-slate-500/30', bar:'bg-slate-400' },
@@ -125,12 +126,16 @@ const pad = n => String(n).padStart(2,'0');
 const todayISO = () => new Date().toISOString().slice(0,10);
 const initials = name => name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
 
-function fmtTime(iso){ const d=new Date(iso); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+function fmtTime(iso){ const d=new Date(iso); return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
 function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso+'T00:00:00'); return d.toLocaleDateString([], {month:'short', day:'numeric'}); }
 function fmtDateTime(iso){ const d=new Date(iso); return d.toLocaleDateString([], {month:'short', day:'numeric'}) + ' · ' + fmtTime(iso); }
 function hoursBetween(a,b){ return (new Date(b)-new Date(a))/3600000; }
 function fmtDur(h){ const m=Math.round(h*60); return `${Math.floor(m/60)}h ${pad(m%60)}m`; }
-function avatarColor(id){ const c=['from-indigo-500 to-violet-500','from-cyan-500 to-blue-500','from-emerald-500 to-teal-500','from-fuchsia-500 to-pink-500','from-amber-500 to-orange-500','from-rose-500 to-red-500']; let s=0; for(const ch of id) s+=ch.charCodeAt(0); return c[s%c.length]; }
+// Live counter and per-shift durations run to the second.
+function fmtHMS(h){ const s=Math.max(0, Math.round(h*3600)); return `${Math.floor(s/3600)}:${pad(Math.floor(s/60)%60)}:${pad(s%60)}`; }
+function fmtDurSec(h){ const s=Math.max(0, Math.round(h*3600)); return `${Math.floor(s/3600)}h ${pad(Math.floor(s/60)%60)}m ${pad(s%60)}s`; }
+// Restrained, professional avatar tones — no neon.
+function avatarColor(id){ const c=['from-slate-600 to-slate-700','from-blue-700 to-blue-800','from-teal-700 to-teal-800','from-indigo-700 to-indigo-800','from-cyan-800 to-blue-800','from-emerald-700 to-teal-800']; let s=0; for(const ch of id) s+=ch.charCodeAt(0); return c[s%c.length]; }
 
 function offset(days){ const d=new Date(); d.setDate(d.getDate()+days); return d.toISOString().slice(0,10); }
 function toISODate(v){
@@ -424,11 +429,9 @@ function Login({ theme, setTheme }){
     <div className="min-h-screen grid place-items-center p-5 relative z-10">
       <div className="glass rounded-2xl w-full max-w-md p-8 shadow-glow">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-11 h-11 rounded-xl grid place-items-center font-black text-white text-lg bg-gradient-to-br from-brand-500 to-fuchsia-500 shadow-glow">Z</div>
+          <div className="w-11 h-11 rounded-xl grid place-items-center font-black text-white text-lg bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow">Z</div>
           <div className="flex-1">
-            <div className="font-extrabold text-fg text-lg leading-tight">Zeus AI Hub</div>
-            <div className="text-[10px] uppercase tracking-widest text-brand-400 font-semibold">Ops Command</div>
-          </div>
+            <div className="font-extrabold text-fg text-lg leading-tight">Zeus AI Hub</div>          </div>
           <ThemeToggle theme={theme} setTheme={setTheme} />
         </div>
         <h2 className="text-fg font-bold text-lg mb-1">Sign in</h2>
@@ -529,17 +532,15 @@ function App(){
       {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-line/10 bg-ink-850/60 backdrop-blur-xl sticky top-0 h-screen">
         <div className="flex items-center gap-3 px-5 h-16 border-b border-line/10">
-          <div className="w-10 h-10 rounded-xl grid place-items-center font-black text-white text-lg bg-gradient-to-br from-brand-500 to-fuchsia-500 shadow-glow">Z</div>
+          <div className="w-10 h-10 rounded-xl grid place-items-center font-black text-white text-lg bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow">Z</div>
           <div>
-            <div className="font-extrabold text-fg leading-tight tracking-tight">Zeus AI Hub</div>
-            <div className="text-[10px] uppercase tracking-widest text-brand-400 font-semibold">Ops Command</div>
-          </div>
+            <div className="font-extrabold text-fg leading-tight tracking-tight">Zeus AI Hub</div>          </div>
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {nav.map(n=>(
             <button key={n.id} onClick={()=>setView(n.id)}
               className={cls('w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition',
-                view===n.id ? 'bg-gradient-to-r from-brand-600/30 to-fuchsia-600/10 text-fg border border-brand-500/30' : 'text-slate-400 hover:text-fg hover:bg-hair/5 border border-transparent')}>
+                view===n.id ? 'bg-brand-600/10 dark:bg-brand-600/20 text-fg border border-brand-500/30' : 'text-slate-400 hover:text-fg hover:bg-hair/5 border border-transparent')}>
               <Icon name={n.icon} className={cls('w-[18px] h-[18px]', view===n.id&&'text-brand-400')}/>
               {n.label}
             </button>
@@ -571,7 +572,9 @@ function App(){
 function Topbar({ db, me, refresh, view, nav, theme, setTheme }){
   const openLog = db.logs.find(l=>l.employeeId===me.id && !l.clockOut);
   const [, setTick] = useState(0);
-  useEffect(()=>{ if(!openLog) return; const t=setInterval(()=>setTick(x=>x+1),1000); return ()=>clearInterval(t); }, [openLog]);
+  // Tick every second either way: live elapsed time while clocked in,
+  // current wall-clock time while clocked out.
+  useEffect(()=>{ const t=setInterval(()=>setTick(x=>x+1),1000); return ()=>clearInterval(t); }, []);
   const [busy, setBusy] = useState(false);
 
   const doClockIn = async () => { setBusy(true); await store.clockIn(me.id, me.trackingArea); await refresh(); setBusy(false); };
@@ -601,11 +604,11 @@ function Topbar({ db, me, refresh, view, nav, theme, setTheme }){
       {/* Clock widget */}
       <div className={cls('flex items-center gap-3 rounded-xl border pl-3 pr-2 py-1.5 transition', openLog ? 'border-emerald-500/40 bg-emerald-500/10' : 'border-line/20 bg-ink-800/60')}>
         <div className="text-right leading-tight">
-          <div className="text-[10px] uppercase tracking-wider font-bold" style={{color: openLog?'#34d399':'#64748b'}}>
+          <div className={cls('text-[10px] uppercase tracking-wider font-bold', openLog?'text-emerald-600 dark:text-emerald-400':'text-slate-500')}>
             {openLog ? 'On the clock' : 'Clocked out'}
           </div>
           <div className="text-sm font-bold text-fg tabnum font-mono">
-            {openLog ? fmtDur(elapsed) : fmtTime(new Date().toISOString())}
+            {openLog ? fmtHMS(elapsed) : fmtTime(new Date().toISOString())}
           </div>
         </div>
         {openLog
@@ -624,7 +627,7 @@ function MetricCard({ icon, label, value, sub, tone }){
     indigo:'from-brand-600/15 to-brand-600/5 text-brand-600 dark:text-brand-300',
     emerald:'from-emerald-600/15 to-emerald-600/5 text-emerald-600 dark:text-emerald-300',
     rose:'from-rose-600/15 to-rose-600/5 text-rose-600 dark:text-rose-300',
-    cyan:'from-cyan-600/15 to-cyan-600/5 text-cyan-600 dark:text-cyan-300',
+    cyan:'from-slate-500/15 to-slate-500/5 text-slate-600 dark:text-slate-300',
   };
   return (
     <div className="glass glass-hover rounded-2xl p-5 relative overflow-hidden">
@@ -660,7 +663,7 @@ function Dashboard({ db, empById, clientById, setView }){
   // donut for work status
   const total = db.employees.length || 1;
   let acc = 0;
-  const segColors = { 'Active':'#34d399','Available':'#22d3ee','At Capacity':'#fbbf24','OOO':'#fb7185' };
+  const segColors = { 'Active':'#059669','Available':'#2563eb','At Capacity':'#d97706','OOO':'#64748b' };
   const grad = byWork.map(w=>{ const start=acc/total*360; acc+=w.n; const end=acc/total*360; return `${segColors[w.s]} ${start}deg ${end}deg`; }).join(', ');
 
   const recent = [...db.logs].sort((a,b)=>new Date(b.clockIn)-new Date(a.clockIn)).slice(0,5);
@@ -727,7 +730,7 @@ function Dashboard({ db, empById, clientById, setView }){
                 <Avatar emp={e} size="w-8 h-8"/>
                 <div className="w-28 shrink-0 text-sm text-slate-300 font-medium truncate">{e.name}</div>
                 <div className="flex-1 h-2.5 rounded-full bg-ink-700 overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-fuchsia-500" style={{width:`${h/maxHrs*100}%`}}></div>
+                  <div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-brand-400" style={{width:`${h/maxHrs*100}%`}}></div>
                 </div>
                 <div className="w-16 text-right text-xs font-mono text-slate-400 tabnum">{fmtDur(h)}</div>
               </div>
@@ -1251,7 +1254,7 @@ function RotaGrid({ db, delShift, isAdmin }){
                   return (
                     <td key={day} className="px-2 py-2 align-top text-center">
                       {s ? (
-                        <div className="group relative rounded-lg bg-gradient-to-br from-brand-600/25 to-fuchsia-600/10 border border-brand-500/25 px-2 py-1.5">
+                        <div className="group relative rounded-lg bg-brand-600/10 dark:bg-brand-600/20 border border-brand-500/25 px-2 py-1.5">
                           <div className="text-[11px] font-bold text-fg font-mono tabnum">{s.start}–{s.end}</div>
                           <div className="text-[9px] text-brand-300 truncate mt-0.5">{s.area}</div>
                           {isAdmin && <button onClick={()=>delShift(s.id)} className="absolute -top-1.5 -right-1.5 opacity-0 group-hover:opacity-100 bg-rose-500 text-white rounded-full w-4 h-4 grid place-items-center text-[10px] transition"><Icon name="x" className="w-2.5 h-2.5"/></button>}
@@ -1327,7 +1330,7 @@ function TimeLog({ db, empById, fEmp }){
                   <td className="px-4 py-3"><span className="text-xs text-slate-400 flex items-center gap-1"><Icon name="pin" className="w-3 h-3"/>{l.area}</span></td>
                   <td className="px-4 py-3 text-xs text-slate-300 font-mono">{fmtDateTime(l.clockIn)}</td>
                   <td className="px-4 py-3 text-xs font-mono">{live? <Chip className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30">active</Chip> : <span className="text-slate-300">{fmtDateTime(l.clockOut)}</span>}</td>
-                  <td className="px-4 py-3 text-right text-xs font-mono font-bold text-fg tabnum">{fmtDur(dur)}</td>
+                  <td className="px-4 py-3 text-right text-xs font-mono font-bold text-fg tabnum">{fmtDurSec(dur)}</td>
                 </tr>
               );})}
             </tbody>
@@ -1587,7 +1590,7 @@ function ClientManagement({ db, refresh, empById, isAdmin }){
             <div key={c.id} className="glass glass-hover rounded-2xl p-6 group">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-xl grid place-items-center bg-gradient-to-br from-cyan-500/20 to-blue-500/10 text-cyan-700 dark:text-cyan-300"><Icon name="briefcase" className="w-5 h-5"/></div>
+                  <div className="w-11 h-11 rounded-xl grid place-items-center bg-brand-600/10 dark:bg-brand-600/20 text-brand-700 dark:text-brand-300"><Icon name="briefcase" className="w-5 h-5"/></div>
                   <div>
                     <div className="font-bold text-fg text-lg leading-tight">{c.company}</div>
                     <div className="text-xs text-slate-500">{c.primaryContact}</div>
