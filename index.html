@@ -369,16 +369,26 @@ function Chip({ children, className }){
    redundant next to the "by Zeus" text. */
 const LOGO_SRC = 'zeus-logo.jpg';
 const LOGO_CROP = { backgroundSize:'284% auto', backgroundPosition:'48.93% 43.02%', backgroundRepeat:'no-repeat' };
+
 function BrandMark({ size='w-10 h-10' }){
-  if(!LOGO_SRC) return (
-    <div className={cls('rounded-xl grid place-items-center bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow shrink-0', size)}>
+  // Lettermark tile — used in dark mode, and as the fallback if no artwork.
+  const tile = extra => (
+    <div className={cls('rounded-xl place-items-center bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow shrink-0', size, extra)}>
       <span className="font-black text-white text-lg leading-none">M</span>
     </div>
   );
+  if(!LOGO_SRC) return tile('grid');
   return (
-    <div className={cls('rounded-xl shrink-0 bg-white ring-1 ring-hair/10', size)}
-         style={{ backgroundImage:`url("${LOGO_SRC}")`, ...LOGO_CROP }}
-         role="img" aria-label="Zeus AI" />
+    <React.Fragment>
+      {/* Light: the emblem sits on its own near-white backdrop, which blends
+          into the light page. */}
+      <div className={cls('rounded-xl shrink-0 bg-white ring-1 ring-hair/10 dark:hidden', size)}
+           style={{ backgroundImage:`url("${LOGO_SRC}")`, ...LOGO_CROP }}
+           role="img" aria-label="Zeus AI" />
+      {/* Dark: that same backdrop would read as a bright patch against the
+          near-black UI, so use the lettermark instead. */}
+      {tile('hidden dark:grid')}
+    </React.Fragment>
   );
 }
 
