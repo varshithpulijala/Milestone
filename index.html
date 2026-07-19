@@ -123,6 +123,12 @@ const mapTask   = r => ({ id:r.id, projectId:r.project_id, primaryTask:r.primary
 const mapShift  = r => ({ id:r.id, employeeId:r.employee_id, day:r.day, start:r.start_time, end:r.end_time, area:r.area });
 const mapLog    = r => ({ id:r.id, employeeId:r.employee_id, clockIn:r.clock_in, clockOut:r.clock_out, area:r.area });
 
+// Only recent clock records travel with the main payload; older history is
+// reached through the Time Log's date filter, and hour totals are summed by
+// the database (employee_hours) rather than downloaded row by row.
+const LOG_WINDOW_DAYS = 45;
+const logCutoff = () => new Date(Date.now() - LOG_WINDOW_DAYS*86400000).toISOString();
+
 async function fetchAll(){
   const [emp, cli, prj, tsk, shf, lg] = await Promise.all([
     sb.from('employees').select('*').order('created_at'),
@@ -130,7 +136,7 @@ async function fetchAll(){
     sb.from('projects').select('*').order('created_at'),
     sb.from('tasks').select('*').order('created_at'),
     sb.from('shifts').select('*'),
-    sb.from('logs').select('*').order('clock_in', { ascending:false }),
+    sb.from('logs').select('*').gte('clock_in', logCutoff()).order('clock_in', { ascending:false }),
   ]);
   const err = emp.error||cli.error||prj.error||tsk.error||shf.error||lg.error;
   if(err) throw err;
@@ -142,6 +148,33 @@ async function fetchAll(){
     shifts:(shf.data||[]).map(mapShift),
     logs:(lg.data||[]).map(mapLog),
   };
+}
+
+// Realtime: apply a single changed row locally instead of re-downloading
+// everything. This is what keeps bandwidth flat as the team grows.
+const MAPPERS = { employees:mapEmp, clients:mapClient, projects:mapProject, tasks:mapTask, shifts:mapShift, logs:mapLog };
+function applyChange(db, table, payload){
+  const list = db[table] || [];
+  if(payload.eventType === 'DELETE'){
+    const gone = payload.old && payload.old.id;
+    return gone ? { ...db, [table]: list.filter(r=>r.id!==gone) } : db;
+  }
+  if(!payload.new) return db;
+  const row = MAPPERS[table](payload.new);
+  if(payload.eventType === 'INSERT'){
+    return list.some(r=>r.id===row.id) ? db : { ...db, [table]: [...list, row] };
+  }
+  return { ...db, [table]: list.map(r=> r.id===row.id ? row : r) };
+}
+
+// Recent task history (fetched on demand, never with the main payload)
+async function fetchActivity({ taskId=null, limit=100 } = {}){
+  let q = sb.from('task_activity').select('*').order('created_at', { ascending:false }).limit(limit);
+  if(taskId) q = q.eq('task_id', taskId);
+  const { data, error } = await q;
+  if(error) throw error;
+  return (data||[]).map(r=>({ id:r.id, taskId:r.task_id, projectId:r.project_id, actorId:r.actor_id,
+    actorEmail:r.actor_email, action:r.action, changes:r.changes||[], taskLabel:r.task_label, at:r.created_at }));
 }
 
 // camelCase -> DB rows (nulls for empty optional fields)
@@ -383,9 +416,15 @@ function App(){
     refresh();
     const ch = sb.channel('zeus-all');
     ['employees','clients','projects','tasks','shifts','logs'].forEach(t=>
-      ch.on('postgres_changes', { event:'*', schema:'public', table:t }, ()=> refresh()));
+      ch.on('postgres_changes', { event:'*', schema:'public', table:t },
+        payload => setDb(d => applyChange(d, t, payload))));
     ch.subscribe();
-    return ()=> { sb.removeChannel(ch); };
+
+    // Safety net: if realtime ever drops (sleep, network blip), resync when
+    // the tab regains focus rather than polling.
+    const onFocus = ()=>{ if(document.visibilityState==='visible') refresh(); };
+    document.addEventListener('visibilitychange', onFocus);
+    return ()=> { sb.removeChannel(ch); document.removeEventListener('visibilitychange', onFocus); };
   }, [session]);
 
   const empById = useMemo(()=>Object.fromEntries(db.employees.map(e=>[e.id,e])), [db.employees]);
@@ -651,7 +690,121 @@ function PersonTag({ emp }){
   return <div className="flex items-center gap-1.5"><Avatar emp={emp} size="w-6 h-6 !text-[9px]"/><span className="text-xs text-slate-200 truncate max-w-[120px]">{emp.name}</span></div>;
 }
 
+function TrackerTabs({ tab, setTab }){
+  return (
+    <div className="inline-flex bg-ink-800/70 border border-indigo-500/15 rounded-xl p-1">
+      {[['tasks','Tasks'],['activity','Activity']].map(([id,label])=>(
+        <button key={id} onClick={()=>setTab(id)}
+          className={cls('px-4 py-2 rounded-lg text-sm font-semibold transition', tab===id?'bg-brand-600 text-white':'text-slate-400 hover:text-white')}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+const ACTION_STYLE = {
+  created: { chip:'bg-emerald-500/15 text-emerald-300 border-emerald-500/30', verb:'created' },
+  updated: { chip:'bg-blue-500/15 text-blue-300 border-blue-500/30',          verb:'updated' },
+  deleted: { chip:'bg-rose-500/15 text-rose-300 border-rose-500/30',          verb:'deleted' },
+};
+
+// One history entry: who did what, and which fields moved.
+function ActivityRow({ entry, empById, projectById, showTask=true }){
+  const actor = empById[entry.actorId];
+  const st = ACTION_STYLE[entry.action] || ACTION_STYLE.updated;
+  const proj = projectById && projectById[entry.projectId];
+  return (
+    <div className="flex gap-3 py-3 border-b border-white/5 last:border-0">
+      {actor ? <Avatar emp={actor} size="w-7 h-7 !text-[9px]"/> :
+        <div className="w-7 h-7 rounded-xl bg-ink-700 grid place-items-center text-slate-500 text-[9px] shrink-0">?</div>}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span className="font-semibold text-white">{actor ? actor.name : (entry.actorEmail || 'Unknown')}</span>
+          <Chip className={st.chip}>{st.verb}</Chip>
+          {showTask && <span className="text-slate-300 truncate">{entry.taskLabel || 'a task'}</span>}
+        </div>
+        {entry.changes && entry.changes.length>0 && (
+          <div className="mt-1.5 space-y-1">
+            {entry.changes.map((c,i)=>(
+              <div key={i} className="text-[11px] flex flex-wrap items-center gap-1.5">
+                <span className="text-slate-500 font-semibold">{c.field}</span>
+                <span className="text-slate-500 line-through truncate max-w-[140px]">{c.from || '—'}</span>
+                <span className="text-slate-600">→</span>
+                <span className="text-slate-200 font-medium truncate max-w-[140px]">{c.to || '—'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="text-[10px] text-slate-600 mt-1">
+          {fmtDateTime(entry.at)}{proj ? ' · '+proj.name : ''}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Global feed of recent task changes.
+function ActivityFeed({ db, empById, projectById }){
+  const [entries, setEntries] = useState(null);
+  const [err, setErr] = useState('');
+  const [fPerson, setFPerson] = useState('all');
+  const [fProject, setFProject] = useState('all');
+
+  useEffect(()=>{
+    let alive = true;
+    fetchActivity({ limit:200 })
+      .then(rows=>{ if(alive) setEntries(rows); })
+      .catch(e=>{ if(alive) setErr(e.message||String(e)); });
+    return ()=>{ alive = false; };
+  }, []);
+
+  let list = entries || [];
+  if(fPerson!=='all')  list = list.filter(e=>e.actorId===fPerson);
+  if(fProject!=='all') list = list.filter(e=>e.projectId===fProject);
+
+  return (
+    <div className="space-y-5">
+      <div className="glass rounded-2xl p-4 flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mr-1"><Icon name="filter" className="w-4 h-4"/>Filter</div>
+        <select className="zi !w-auto !py-2 text-sm" value={fPerson} onChange={e=>setFPerson(e.target.value)}>
+          <option value="all">Anyone</option>
+          {db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+        </select>
+        <select className="zi !w-auto !py-2 text-sm" value={fProject} onChange={e=>setFProject(e.target.value)}>
+          <option value="all">All Projects</option>
+          {db.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+        <span className="ml-auto text-[11px] text-slate-500">{list.length} of the 200 most recent changes</span>
+      </div>
+
+      <div className="glass rounded-2xl px-5 py-2">
+        {err && <p className="text-rose-400 text-sm py-8 text-center">Couldn’t load activity: {err}</p>}
+        {!err && entries===null && <p className="text-slate-500 text-sm py-10 text-center">Loading activity…</p>}
+        {!err && entries!==null && list.length===0 && <p className="text-slate-500 text-sm py-10 text-center">No task activity recorded yet.</p>}
+        {list.map(e=><ActivityRow key={e.id} entry={e} empById={empById} projectById={projectById} />)}
+      </div>
+    </div>
+  );
+}
+
+// History for a single task, shown inside the edit modal.
+function TaskHistory({ taskId, empById }){
+  const [entries, setEntries] = useState(null);
+  useEffect(()=>{
+    let alive = true;
+    fetchActivity({ taskId, limit:50 }).then(r=>{ if(alive) setEntries(r); }).catch(()=>{ if(alive) setEntries([]); });
+    return ()=>{ alive = false; };
+  }, [taskId]);
+  return (
+    <div className="rounded-xl border border-white/10 bg-ink-900/40 px-4 max-h-56 overflow-y-auto">
+      {entries===null && <p className="text-xs text-slate-500 py-4">Loading history…</p>}
+      {entries!==null && entries.length===0 && <p className="text-xs text-slate-500 py-4">No changes recorded yet.</p>}
+      {(entries||[]).map(e=><ActivityRow key={e.id} entry={e} empById={empById} showTask={false} />)}
+    </div>
+  );
+}
+
 function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin }){
+  const [tab, setTab] = useState('tasks');
   const [fClient, setFClient] = useState('all');
   const [fProject, setFProject] = useState('all');
   const [fPerson, setFPerson] = useState('all');
@@ -702,8 +855,17 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
 
   const noProjects = db.projects.length===0;
 
+  if(tab === 'activity') return (
+    <div className="space-y-5">
+      <TrackerTabs tab={tab} setTab={setTab} />
+      <ActivityFeed db={db} empById={empById} projectById={projectById} />
+    </div>
+  );
+
   return (
     <div className="space-y-5">
+      <TrackerTabs tab={tab} setTab={setTab} />
+
       {/* Filters + actions */}
       <div className="glass rounded-2xl p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-slate-400 text-xs font-bold uppercase tracking-wider mr-1"><Icon name="filter" className="w-4 h-4"/>Filter</div>
@@ -806,13 +968,13 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
         );
       })}
 
-      {editTask && <TaskModal db={db} refresh={refresh} task={editTask==='new'?null:editTask} defaultProjectId={fProject!=='all'?fProject:''} onClose={()=>setEditTask(null)} />}
+      {editTask && <TaskModal db={db} refresh={refresh} empById={empById} task={editTask==='new'?null:editTask} defaultProjectId={fProject!=='all'?fProject:''} onClose={()=>setEditTask(null)} />}
       {showImport && <ImportModal db={db} refresh={refresh} onClose={()=>setShowImport(false)} />}
     </div>
   );
 }
 
-function TaskModal({ db, refresh, task, defaultProjectId, onClose }){
+function TaskModal({ db, refresh, empById, task, defaultProjectId, onClose }){
   const editing = !!task;
   const [f, setF] = useState({
     projectId:    task?.projectId    || defaultProjectId || (db.projects[0]?.id || ''),
@@ -868,6 +1030,12 @@ function TaskModal({ db, refresh, task, defaultProjectId, onClose }){
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-white/10 text-slate-300 font-semibold text-sm hover:bg-white/5">Cancel</button>
           <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Saving…':(editing?'Save changes':'Create Task')}</button>
         </div>
+        {editing && (
+          <div className="pt-2">
+            <div className="text-xs font-semibold text-slate-400 mb-2">History</div>
+            <TaskHistory taskId={task.id} empById={empById} />
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -1023,17 +1191,51 @@ function RotaGrid({ db, delShift, isAdmin }){
   );
 }
 
-function TimeLog({ db, empById, fEmp }){
-  let logs = [...db.logs].sort((a,b)=>new Date(b.clockIn)-new Date(a.clockIn));
-  if(fEmp!=='all') logs = logs.filter(l=>l.employeeId===fEmp);
+const LOG_RANGES = [[String(LOG_WINDOW_DAYS),`Last ${LOG_WINDOW_DAYS} days`],['90','Last 90 days'],['365','Last year'],['0','All time']];
 
-  const totals = {};
-  db.logs.forEach(l=>{ const end=l.clockOut?new Date(l.clockOut).getTime():Date.now(); totals[l.employeeId]=(totals[l.employeeId]||0)+hoursBetween(l.clockIn,end); });
-  const totalList = Object.entries(totals).map(([id,h])=>({e:empById[id],h})).filter(x=>x.e).sort((a,b)=>b.h-a.h);
+function TimeLog({ db, empById, fEmp }){
+  const [range, setRange] = useState(String(LOG_WINDOW_DAYS));
+  const [older, setOlder] = useState(null);   // rows fetched for a wider range
+  const [busy, setBusy] = useState(false);
+  const [totals, setTotals] = useState(null); // summed by the database
+
+  // Hour totals come from the server, so they stay correct no matter how
+  // few records are loaded on screen.
+  useEffect(()=>{
+    let alive = true;
+    sb.rpc('employee_hours').then(({ data, error })=>{ if(alive && !error) setTotals(data||[]); });
+    return ()=>{ alive = false; };
+  }, [db.logs.length]);
+
+  const chooseRange = async (val) => {
+    setRange(val);
+    if(val !== '0' && Number(val) <= LOG_WINDOW_DAYS){ setOlder(null); return; }
+    setBusy(true);
+    let q = sb.from('logs').select('*').order('clock_in', { ascending:false }).limit(2000);
+    if(val !== '0') q = q.gte('clock_in', new Date(Date.now()-Number(val)*86400000).toISOString());
+    const { data } = await q;
+    setOlder((data||[]).map(mapLog));
+    setBusy(false);
+  };
+
+  let logs = older || db.logs;
+  if(fEmp!=='all') logs = logs.filter(l=>l.employeeId===fEmp);
+  logs = [...logs].sort((a,b)=>new Date(b.clockIn)-new Date(a.clockIn));
+
+  const totalList = (totals||[]).map(t=>({ e:empById[t.employee_id], h:Number(t.hours)||0 }))
+    .filter(x=>x.e).sort((a,b)=>b.h-a.h);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="glass rounded-2xl overflow-hidden lg:col-span-2">
+        <div className="flex items-center gap-3 px-5 py-3 border-b border-white/5">
+          <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold">Showing</span>
+          <select className="zi !w-auto !py-1.5 text-xs" value={range} onChange={e=>chooseRange(e.target.value)}>
+            {LOG_RANGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}
+          </select>
+          {busy && <span className="text-[11px] text-slate-500">loading…</span>}
+          <span className="ml-auto text-[11px] text-slate-500">{logs.length} record{logs.length===1?'':'s'}</span>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse min-w-[620px]">
             <thead><tr className="bg-ink-800/80 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">
@@ -1056,8 +1258,11 @@ function TimeLog({ db, empById, fEmp }){
       </div>
 
       <div className="glass rounded-2xl p-6">
-        <h3 className="font-bold text-white mb-4">Total Hours Worked</h3>
+        <h3 className="font-bold text-white">Total Hours Worked</h3>
+        <p className="text-[11px] text-slate-500 mb-4">All-time, calculated on the server</p>
         <div className="space-y-3">
+          {totals===null && <p className="text-xs text-slate-500">Loading totals…</p>}
+          {totals!==null && totalList.length===0 && <p className="text-xs text-slate-500">No clock records yet.</p>}
           {totalList.map(({e,h})=>(
             <div key={e.id} className="flex items-center gap-3">
               <Avatar emp={e} size="w-8 h-8"/>
