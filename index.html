@@ -15,7 +15,9 @@
   </script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Zeus AI Hub — Workforce & Operations</title>
+  <title>Milestone by Zeus — Workforce & Operations</title>
+  <!-- Tab icon: white mark on the brand tile, so it reads on light and dark chrome -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%231d4ed8'/><text x='32' y='46' font-family='Inter,Segoe UI,sans-serif' font-size='40' font-weight='900' fill='white' text-anchor='middle'>M</text></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
@@ -84,8 +86,8 @@
 <body class="font-sans antialiased app-grid-bg">
   <div id="root">
     <div class="boot">
-      <div class="boot-logo">Z</div>
-      <p>Booting Zeus AI Hub…</p>
+      <div class="boot-logo">M</div>
+      <p>Booting Milestone…</p>
     </div>
   </div>
 
@@ -351,6 +353,20 @@ function Chip({ children, className }){
   return <span className={cls('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border', className)}>{children}</span>;
 }
 
+/* Brand mark. A white logo stays legible in BOTH themes because it sits on a
+   coloured tile — no dark variant needed. To use your own artwork: drop the
+   file in this folder and set LOGO_SRC to its filename. */
+const LOGO_SRC = '';   // e.g. 'logo.svg'  ← set this once the file is in place
+function BrandMark({ size='w-10 h-10' }){
+  return (
+    <div className={cls('rounded-xl grid place-items-center bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow shrink-0 overflow-hidden', size)}>
+      {LOGO_SRC
+        ? <img src={LOGO_SRC} alt="Milestone" className="w-[62%] h-[62%] object-contain" />
+        : <span className="font-black text-white text-lg leading-none">M</span>}
+    </div>
+  );
+}
+
 function Avatar({ emp, size='w-9 h-9' }){
   return <div className={cls('rounded-xl grid place-items-center text-white font-bold text-xs bg-gradient-to-br shrink-0', size, avatarColor(emp.id))}>{initials(emp.name)}</div>;
 }
@@ -393,7 +409,7 @@ function Splash({ text }){
   return (
     <div className="min-h-screen grid place-items-center">
       <div className="flex flex-col items-center gap-4 text-slate-400">
-        <div className="boot-logo">Z</div>
+        <div className="boot-logo">M</div>
         <p className="text-sm">{text}</p>
       </div>
     </div>
@@ -429,9 +445,11 @@ function Login({ theme, setTheme }){
     <div className="min-h-screen grid place-items-center p-5 relative z-10">
       <div className="glass rounded-2xl w-full max-w-md p-8 shadow-glow">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-11 h-11 rounded-xl grid place-items-center font-black text-white text-lg bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow">Z</div>
-          <div className="flex-1">
-            <div className="font-extrabold text-fg text-lg leading-tight">Zeus AI Hub</div>          </div>
+          <BrandMark size="w-11 h-11" />
+          <div className="flex-1 flex items-baseline gap-1.5">
+            <div className="font-extrabold text-fg text-lg leading-tight">Milestone</div>
+            <div className="text-[11px] text-slate-500 font-medium">by Zeus</div>
+          </div>
           <ThemeToggle theme={theme} setTheme={setTheme} />
         </div>
         <h2 className="text-fg font-bold text-lg mb-1">Sign in</h2>
@@ -532,9 +550,11 @@ function App(){
       {/* Sidebar */}
       <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-line/10 bg-ink-850/60 backdrop-blur-xl sticky top-0 h-screen">
         <div className="flex items-center gap-3 px-5 h-16 border-b border-line/10">
-          <div className="w-10 h-10 rounded-xl grid place-items-center font-black text-white text-lg bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow">Z</div>
-          <div>
-            <div className="font-extrabold text-fg leading-tight tracking-tight">Zeus AI Hub</div>          </div>
+          <BrandMark size="w-10 h-10" />
+          <div className="flex items-baseline gap-1.5 min-w-0">
+            <div className="font-extrabold text-fg leading-tight tracking-tight">Milestone</div>
+            <div className="text-[11px] text-slate-500 font-medium shrink-0">by Zeus</div>
+          </div>
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {nav.map(n=>(
@@ -931,7 +951,7 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
     ws['!cols'] = header.map((h,i)=>({ wch: i<3?26:16 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Tasks');
-    XLSX.writeFile(wb, `zeus-tasks-${todayISO()}.xlsx`);
+    XLSX.writeFile(wb, `milestone-tasks-${todayISO()}.xlsx`);
   };
 
   const noProjects = db.projects.length===0;
@@ -1517,7 +1537,7 @@ function EmployeeModal({ db, refresh, employee, onClose }){
   };
 
   return (
-    <Modal title={editing?'Edit Team Member':'Add Team Member'} subtitle={editing?'Update this employee’s details':'Onboard a new employee to Zeus AI Hub'} onClose={onClose}>
+    <Modal title={editing?'Edit Team Member':'Add Team Member'} subtitle={editing?'Update this employee’s details':'Onboard a new employee to Milestone'} onClose={onClose}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <Field label="Full name"><input className="zi" value={f.name} onChange={e=>up('name',e.target.value)} placeholder="Jordan Lee" autoFocus/></Field>
@@ -1751,7 +1771,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
       } catch (err) {
         document.getElementById('root').innerHTML =
           '<div style="max-width:640px;margin:80px auto;font-family:Inter,sans-serif;color:#fca5a5;background:#1b2438;border:1px solid #7f1d1d;border-radius:14px;padding:24px">' +
-          '<b style="color:#fff">Zeus AI Hub failed to start.</b><pre style="white-space:pre-wrap;margin-top:12px;color:#fca5a5;font-size:12px">' +
+          '<b style="color:#fff">Milestone failed to start.</b><pre style="white-space:pre-wrap;margin-top:12px;color:#fca5a5;font-size:12px">' +
           String(err && err.message || err) + '</pre></div>';
         console.error(err);
       }
