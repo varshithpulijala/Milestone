@@ -353,17 +353,32 @@ function Chip({ children, className }){
   return <span className={cls('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border', className)}>{children}</span>;
 }
 
-/* Brand mark. A white logo stays legible in BOTH themes because it sits on a
-   coloured tile — no dark variant needed. To use your own artwork: drop the
-   file in this folder and set LOGO_SRC to its filename. */
-const LOGO_SRC = '';   // e.g. 'logo.svg'  ← set this once the file is in place
+/* Brand mark — the Zeus emblem.
+
+   The source artwork is a JPG lockup (emblem above a "ZEUS AI" wordmark) with
+   wide margins and no transparency, so it can't be dropped in as-is: at tile
+   size the emblem would be a speck, and the baked-in off-white background
+   would show as a pale box.
+
+   Instead the image is used as a *cropped background*. These numbers were
+   measured from the artwork itself (emblem occupies x 444–779, y 607–964 of a
+   1240×1755 image): scaling to 284% and anchoring at 48.93%/43.02% centres the
+   emblem in a square tile. The JPG's own off-white fills the tile, so it reads
+   as a clean logo chip in both themes with no seam.
+   Only the emblem is used — the wordmark would be illegible small, and it'd be
+   redundant next to the "by Zeus" text. */
+const LOGO_SRC = 'zeus-logo.jpg';
+const LOGO_CROP = { backgroundSize:'284% auto', backgroundPosition:'48.93% 43.02%', backgroundRepeat:'no-repeat' };
 function BrandMark({ size='w-10 h-10' }){
-  return (
-    <div className={cls('rounded-xl grid place-items-center bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow shrink-0 overflow-hidden', size)}>
-      {LOGO_SRC
-        ? <img src={LOGO_SRC} alt="Milestone" className="w-[62%] h-[62%] object-contain" />
-        : <span className="font-black text-white text-lg leading-none">M</span>}
+  if(!LOGO_SRC) return (
+    <div className={cls('rounded-xl grid place-items-center bg-gradient-to-br from-brand-600 to-cyan-800 shadow-glow shrink-0', size)}>
+      <span className="font-black text-white text-lg leading-none">M</span>
     </div>
+  );
+  return (
+    <div className={cls('rounded-xl shrink-0 bg-white ring-1 ring-hair/10', size)}
+         style={{ backgroundImage:`url("${LOGO_SRC}")`, ...LOGO_CROP }}
+         role="img" aria-label="Zeus AI" />
   );
 }
 
