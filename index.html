@@ -167,7 +167,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 const mapEmp    = r => ({ id:r.id, name:r.name, email:r.email, designation:r.designation, department:r.department, trackingArea:r.tracking_area, workStatus:r.work_status, role:r.role||'member', managerId:r.manager_id });
 const mapClient = r => ({ id:r.id, company:r.company, primaryContact:r.primary_contact });
 const mapProject= r => ({ id:r.id, clientId:r.client_id, name:r.name, description:r.description, status:r.status, managerId:r.manager_id, checkerId:r.checker_id });
-const mapTask   = r => ({ id:r.id, projectId:r.project_id, primaryTask:r.primary_task, subTask:r.sub_task, detailedTask:r.detailed_task, developerId:r.developer_id, checkerId:r.checker_id, startDate:r.start_date, endDate:r.end_date, status:r.status });
+const mapTask   = r => ({ id:r.id, seq:r.seq, createdBy:r.created_by, projectId:r.project_id, primaryTask:r.primary_task, subTask:r.sub_task, detailedTask:r.detailed_task, developerId:r.developer_id, checkerId:r.checker_id, startDate:r.start_date, endDate:r.end_date, status:r.status });
+const taskCode  = seq => seq ? 'TSK-'+String(seq).padStart(4,'0') : '—';
 const mapShift  = r => ({ id:r.id, employeeId:r.employee_id, day:r.day, start:r.start_time, end:r.end_time, area:r.area });
 const mapLog    = r => ({ id:r.id, employeeId:r.employee_id, clockIn:r.clock_in, clockOut:r.clock_out, area:r.area });
 
@@ -1042,12 +1043,14 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
               <span className="ml-auto text-[11px] text-slate-500">{list.length} task{list.length===1?'':'s'}</span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full border-collapse min-w-[920px] text-sm">
+              <table className="w-full border-collapse min-w-[1120px] text-sm">
                 <thead>
                   <tr className="bg-ink-800/60 text-left text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                     <th className="px-4 py-2.5">Primary Task</th>
                     <th className="px-4 py-2.5">Sub task</th>
+                    <th className="px-4 py-2.5">Task ID</th>
                     <th className="px-4 py-2.5">Detailed Task</th>
+                    <th className="px-4 py-2.5">Raised by</th>
                     <th className="px-4 py-2.5">Developer</th>
                     <th className="px-4 py-2.5">Checker</th>
                     <th className="px-4 py-2.5">Start</th>
@@ -1063,12 +1066,17 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
                     const showSub = showPrimary || prev.subTask!==t.subTask;
                     const dev = empById[t.developerId];
                     const chk = empById[t.checkerId];
+                    const creator = empById[t.createdBy];
                     const overdue = t.status!=='Completed' && t.endDate && t.endDate < todayISO();
                     return (
                       <tr key={t.id} className="border-b border-hair/5 hover:bg-hair/[0.02] group align-top">
                         <td className="px-4 py-2.5 font-semibold text-fg">{showPrimary ? (t.primaryTask||'—') : ''}</td>
                         <td className="px-4 py-2.5 text-slate-300">{showSub ? (t.subTask||'—') : ''}</td>
+                        <td className="px-4 py-2.5 whitespace-nowrap">
+                          <button onClick={()=>setEditTask(t)} title="Open task details" className="font-mono text-xs font-semibold text-brand-600 dark:text-brand-300 hover:underline">{taskCode(t.seq)}</button>
+                        </td>
                         <td className="px-4 py-2.5 text-slate-200">{t.detailedTask}</td>
+                        <td className="px-4 py-2.5">{creator ? <PersonTag emp={creator}/> : <span className="text-slate-600">—</span>}</td>
                         <td className="px-4 py-2.5">{dev ? <PersonTag emp={dev}/> : <span className="text-slate-600">—</span>}</td>
                         <td className="px-4 py-2.5">{chk ? <PersonTag emp={chk}/> : <span className="text-slate-600">—</span>}</td>
                         <td className="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">{fmtDate(t.startDate)}</td>
@@ -1094,14 +1102,16 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
         );
       })}
 
-      {editTask && <TaskModal db={db} refresh={refresh} empById={empById} task={editTask==='new'?null:editTask} defaultProjectId={fProject!=='all'?fProject:''} onClose={()=>setEditTask(null)} />}
+      {editTask && <TaskModal db={db} refresh={refresh} empById={empById} isAdmin={isAdmin} task={editTask==='new'?null:editTask} defaultProjectId={fProject!=='all'?fProject:''} onClose={()=>setEditTask(null)} />}
       {showImport && <ImportModal db={db} refresh={refresh} onClose={()=>setShowImport(false)} />}
     </div>
   );
 }
 
-function TaskModal({ db, refresh, empById, task, defaultProjectId, onClose }){
+function TaskModal({ db, refresh, empById, task, defaultProjectId, isAdmin=true, onClose }){
   const editing = !!task;
+  const ro = !isAdmin;   // members open the modal from a Task ID as read-only detail
+  const creator = task && empById[task.createdBy];
   const [f, setF] = useState({
     projectId:    task?.projectId    || defaultProjectId || (db.projects[0]?.id || ''),
     primaryTask:  task?.primaryTask  || '',
@@ -1129,32 +1139,32 @@ function TaskModal({ db, refresh, empById, task, defaultProjectId, onClose }){
   };
 
   return (
-    <Modal title={editing?'Edit Task':'New Task'} subtitle="A task under a client's project" onClose={onClose} wide>
+    <Modal title={ro?'Task Details':(editing?'Edit Task':'New Task')} subtitle={editing?(taskCode(task.seq)+(creator?' · raised by '+creator.name:'')):"A task under a client's project"} onClose={onClose} wide>
       <div className="space-y-4">
         <Field label="Project">
-          <select className="zi" value={f.projectId} onChange={e=>up('projectId', e.target.value)}>
+          <select className="zi" disabled={ro} value={f.projectId} onChange={e=>up('projectId', e.target.value)}>
             {db.projects.length===0 && <option value="">No projects — add one in Client Management</option>}
             {db.projects.map(p=>{ const c=db.clients.find(x=>x.id===p.clientId); return <option key={p.id} value={p.id}>{(c?.company||'?')+' · '+p.name}</option>; })}
           </select>
         </Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Primary Task"><input className="zi" value={f.primaryTask} onChange={e=>up('primaryTask',e.target.value)} placeholder="e.g. Checkout revamp"/></Field>
-          <Field label="Sub task"><input className="zi" value={f.subTask} onChange={e=>up('subTask',e.target.value)} placeholder="e.g. Payment API"/></Field>
+          <Field label="Primary Task"><input className="zi" disabled={ro} value={f.primaryTask} onChange={e=>up('primaryTask',e.target.value)} placeholder="e.g. Checkout revamp"/></Field>
+          <Field label="Sub task"><input className="zi" disabled={ro} value={f.subTask} onChange={e=>up('subTask',e.target.value)} placeholder="e.g. Payment API"/></Field>
         </div>
-        <Field label="Detailed Task"><input className="zi" value={f.detailedTask} onChange={e=>up('detailedTask',e.target.value)} placeholder="The specific work item" autoFocus/></Field>
+        <Field label="Detailed Task"><input className="zi" disabled={ro} value={f.detailedTask} onChange={e=>up('detailedTask',e.target.value)} placeholder="The specific work item" autoFocus={!ro}/></Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Developer"><select className="zi" value={f.developerId} onChange={e=>up('developerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
-          <Field label="Checker"><select className="zi" value={f.checkerId} onChange={e=>up('checkerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+          <Field label="Developer"><select className="zi" disabled={ro} value={f.developerId} onChange={e=>up('developerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+          <Field label="Checker"><select className="zi" disabled={ro} value={f.checkerId} onChange={e=>up('checkerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
         </div>
         <div className="grid grid-cols-3 gap-4">
-          <Field label="Start date"><input type="date" className="zi" value={f.startDate||''} onChange={e=>up('startDate',e.target.value)}/></Field>
-          <Field label="End date"><input type="date" className="zi" value={f.endDate||''} onChange={e=>up('endDate',e.target.value)}/></Field>
-          <Field label="Status"><select className="zi" value={f.status} onChange={e=>up('status',e.target.value)}>{Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
+          <Field label="Start date"><input type="date" className="zi" disabled={ro} value={f.startDate||''} onChange={e=>up('startDate',e.target.value)}/></Field>
+          <Field label="End date"><input type="date" className="zi" disabled={ro} value={f.endDate||''} onChange={e=>up('endDate',e.target.value)}/></Field>
+          <Field label="Status"><select className="zi" disabled={ro} value={f.status} onChange={e=>up('status',e.target.value)}>{Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
         </div>
         {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
         <div className="flex gap-3 pt-1">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-hair/10 text-slate-300 font-semibold text-sm hover:bg-hair/5">Cancel</button>
-          <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Saving…':(editing?'Save changes':'Create Task')}</button>
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-hair/10 text-slate-300 font-semibold text-sm hover:bg-hair/5">{ro?'Close':'Cancel'}</button>
+          {!ro && <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Saving…':(editing?'Save changes':'Create Task')}</button>}
         </div>
         {editing && (
           <div className="pt-2">
