@@ -167,7 +167,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 const mapEmp    = r => ({ id:r.id, name:r.name, email:r.email, designation:r.designation, department:r.department, trackingArea:r.tracking_area, workStatus:r.work_status, role:r.role||'member', managerId:r.manager_id });
 const mapClient = r => ({ id:r.id, company:r.company, primaryContact:r.primary_contact });
 const mapProject= r => ({ id:r.id, clientId:r.client_id, name:r.name, description:r.description, status:r.status, managerId:r.manager_id, checkerId:r.checker_id });
-const mapTask   = r => ({ id:r.id, seq:r.seq, createdBy:r.created_by, projectId:r.project_id, primaryTask:r.primary_task, subTask:r.sub_task, detailedTask:r.detailed_task, developerId:r.developer_id, checkerId:r.checker_id, startDate:r.start_date, endDate:r.end_date, status:r.status });
+const mapTask   = r => ({ id:r.id, seq:r.seq, createdBy:r.created_by, projectId:r.project_id, primaryTask:r.primary_task, subTask:r.sub_task, detailedTask:r.detailed_task, developerId:r.developer_id, checkerId:r.checker_id, startDate:r.start_date, endDate:r.end_date, status:r.status, description:r.description, businessValue:r.business_value, acceptanceCriteria:r.acceptance_criteria, comments:r.comments });
 const taskCode  = seq => seq ? 'TSK-'+String(seq).padStart(4,'0') : '—';
 const mapShift  = r => ({ id:r.id, employeeId:r.employee_id, day:r.day, start:r.start_time, end:r.end_time, area:r.area });
 const mapLog    = r => ({ id:r.id, employeeId:r.employee_id, clockIn:r.clock_in, clockOut:r.clock_out, area:r.area });
@@ -255,6 +255,10 @@ const taskRow = t => ({
   start_date:   t.startDate || null,
   end_date:     t.endDate || null,
   status:       t.status || 'Not Started',
+  description:         t.description || null,
+  business_value:      t.businessValue || null,
+  acceptance_criteria: t.acceptanceCriteria || null,
+  comments:            t.comments || null,
 });
 
 // All writes. Each returns a promise; callers refresh() afterwards, and realtime
@@ -918,11 +922,11 @@ function TaskHistory({ taskId, empById }){
   const [entries, setEntries] = useState(null);
   useEffect(()=>{
     let alive = true;
-    fetchActivity({ taskId, limit:50 }).then(r=>{ if(alive) setEntries(r); }).catch(()=>{ if(alive) setEntries([]); });
+    fetchActivity({ taskId, limit:500 }).then(r=>{ if(alive) setEntries(r); }).catch(()=>{ if(alive) setEntries([]); });
     return ()=>{ alive = false; };
   }, [taskId]);
   return (
-    <div className="rounded-xl border border-hair/10 bg-ink-900/40 px-4 max-h-56 overflow-y-auto">
+    <div className="rounded-xl border border-hair/10 bg-ink-900/40 px-4">
       {entries===null && <p className="text-xs text-slate-500 py-4">Loading history…</p>}
       {entries!==null && entries.length===0 && <p className="text-xs text-slate-500 py-4">No changes recorded yet.</p>}
       {(entries||[]).map(e=><ActivityRow key={e.id} entry={e} empById={empById} showTask={false} />)}
@@ -1013,12 +1017,12 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
           {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}
         </select>
         <div className="flex-1"></div>
-        {isAdmin && <button onClick={()=>setShowImport(true)} disabled={noProjects} title={noProjects?'Create a project first':'Import tasks from Excel/CSV'}
-          className="flex items-center gap-1.5 border border-line/25 text-slate-200 hover:bg-hair/5 disabled:opacity-40 text-sm font-semibold px-3 py-2 rounded-lg transition"><Icon name="upload" className="w-4 h-4"/>Import</button>}
+        <button onClick={()=>setShowImport(true)} disabled={noProjects} title={noProjects?'Create a project first':'Import tasks from Excel/CSV'}
+          className="flex items-center gap-1.5 border border-line/25 text-slate-200 hover:bg-hair/5 disabled:opacity-40 text-sm font-semibold px-3 py-2 rounded-lg transition"><Icon name="upload" className="w-4 h-4"/>Import</button>
         <button onClick={exportXlsx} title="Export tasks to Excel"
           className="flex items-center gap-1.5 border border-line/25 text-slate-200 hover:bg-hair/5 text-sm font-semibold px-3 py-2 rounded-lg transition"><Icon name="download" className="w-4 h-4"/>Export</button>
-        {isAdmin && <button onClick={()=>setEditTask('new')} disabled={noProjects} title={noProjects?'Create a project first':''}
-          className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm font-bold px-3.5 py-2 rounded-lg transition"><Icon name="plus" className="w-4 h-4"/>New Task</button>}
+        <button onClick={()=>setEditTask('new')} disabled={noProjects} title={noProjects?'Create a project first':''}
+          className="flex items-center gap-1.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white text-sm font-bold px-3.5 py-2 rounded-lg transition"><Icon name="plus" className="w-4 h-4"/>New Task</button>
       </div>
 
       {noProjects && (
@@ -1051,12 +1055,12 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
                     <th className="px-4 py-2.5">Task ID</th>
                     <th className="px-4 py-2.5">Detailed Task</th>
                     <th className="px-4 py-2.5">Raised by</th>
-                    <th className="px-4 py-2.5">Developer</th>
+                    <th className="px-4 py-2.5">Developer / Employee</th>
                     <th className="px-4 py-2.5">Checker</th>
                     <th className="px-4 py-2.5">Start</th>
                     <th className="px-4 py-2.5">End</th>
                     <th className="px-4 py-2.5">Status</th>
-                    {isAdmin && <th className="px-3 py-2.5"></th>}
+                    <th className="px-3 py-2.5"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1086,12 +1090,10 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
                             {Object.keys(TASK_STATUSES).map(s=><option key={s} value={s} className="bg-ink-800 text-fg">{s}</option>)}
                           </select>
                         </td>
-                        {isAdmin && (
-                          <td className="px-3 py-2.5 whitespace-nowrap text-right">
-                            <button onClick={()=>setEditTask(t)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-brand-300 transition mr-1" title="Edit"><Icon name="pencil" className="w-3.5 h-3.5"/></button>
-                            <button onClick={()=>delTask(t.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition" title="Delete"><Icon name="trash" className="w-3.5 h-3.5"/></button>
-                          </td>
-                        )}
+                        <td className="px-3 py-2.5 whitespace-nowrap text-right">
+                          <button onClick={()=>setEditTask(t)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-brand-300 transition mr-1" title="Edit"><Icon name="pencil" className="w-3.5 h-3.5"/></button>
+                          {isAdmin && <button onClick={()=>delTask(t.id)} className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition" title="Delete"><Icon name="trash" className="w-3.5 h-3.5"/></button>}
+                        </td>
                       </tr>
                     );
                   })}
@@ -1110,7 +1112,7 @@ function TaskTracker({ db, refresh, empById, clientById, projectById, isAdmin })
 
 function TaskModal({ db, refresh, empById, task, defaultProjectId, isAdmin=true, onClose }){
   const editing = !!task;
-  const ro = !isAdmin;   // members open the modal from a Task ID as read-only detail
+  const ro = false;   // every team member can create and edit tasks
   const creator = task && empById[task.createdBy];
   const [f, setF] = useState({
     projectId:    task?.projectId    || defaultProjectId || (db.projects[0]?.id || ''),
@@ -1122,6 +1124,10 @@ function TaskModal({ db, refresh, empById, task, defaultProjectId, isAdmin=true,
     startDate:    task?.startDate    || '',
     endDate:      task?.endDate      || '',
     status:       task?.status       || 'Not Started',
+    description:        task?.description        || '',
+    businessValue:      task?.businessValue      || '',
+    acceptanceCriteria: task?.acceptanceCriteria || '',
+    comments:           task?.comments           || '',
   });
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1153,7 +1159,7 @@ function TaskModal({ db, refresh, empById, task, defaultProjectId, isAdmin=true,
         </div>
         <Field label="Detailed Task"><input className="zi" disabled={ro} value={f.detailedTask} onChange={e=>up('detailedTask',e.target.value)} placeholder="The specific work item" autoFocus={!ro}/></Field>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Developer"><select className="zi" disabled={ro} value={f.developerId} onChange={e=>up('developerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+          <Field label="Developer / Employee"><select className="zi" disabled={ro} value={f.developerId} onChange={e=>up('developerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
           <Field label="Checker"><select className="zi" disabled={ro} value={f.checkerId} onChange={e=>up('checkerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
         </div>
         <div className="grid grid-cols-3 gap-4">
@@ -1161,6 +1167,18 @@ function TaskModal({ db, refresh, empById, task, defaultProjectId, isAdmin=true,
           <Field label="End date"><input type="date" className="zi" disabled={ro} value={f.endDate||''} onChange={e=>up('endDate',e.target.value)}/></Field>
           <Field label="Status"><select className="zi" disabled={ro} value={f.status} onChange={e=>up('status',e.target.value)}>{Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
         </div>
+        <Field label="Description"><textarea className="zi" rows={3} disabled={ro} value={f.description} onChange={e=>up('description',e.target.value)} placeholder="What needs to be done"/></Field>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Business Value"><textarea className="zi" rows={3} disabled={ro} value={f.businessValue} onChange={e=>up('businessValue',e.target.value)} placeholder="Why it matters / impact"/></Field>
+          <Field label="Acceptance Criteria"><textarea className="zi" rows={3} disabled={ro} value={f.acceptanceCriteria} onChange={e=>up('acceptanceCriteria',e.target.value)} placeholder="Definition of done"/></Field>
+        </div>
+        <Field label="Comments"><textarea className="zi" rows={3} disabled={ro} value={f.comments} onChange={e=>up('comments',e.target.value)} placeholder="Notes, blockers, updates"/></Field>
+        {editing && (
+          <div className="flex items-center gap-2 text-xs text-slate-500">
+            <span className="font-semibold">Raised by</span>
+            {creator ? <><Avatar emp={creator} size="w-5 h-5 !text-[8px] !rounded-md"/><span className="text-slate-300">{creator.name}</span></> : <span>—</span>}
+          </div>
+        )}
         {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
         <div className="flex gap-3 pt-1">
           <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-hair/10 text-slate-300 font-semibold text-sm hover:bg-hair/5">{ro?'Close':'Cancel'}</button>
