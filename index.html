@@ -326,21 +326,39 @@ function Icon({ name, className='w-5 h-5' }){
   );
 }
 
-function Modal({ title, subtitle, onClose, children, wide }){
+/* Modal. The backdrop scrolls and an inner min-h-full flex centres the card:
+   centring the card directly against a scrolling parent clips its top once the
+   content is taller than the viewport. Header and optional footer stay pinned
+   while the body scrolls, so long forms keep their title and actions in view. */
+function Modal({ title, subtitle, onClose, children, footer, wide }){
   useEffect(()=>{ const h=e=>e.key==='Escape'&&onClose(); window.addEventListener('keydown',h); return ()=>window.removeEventListener('keydown',h); },[]);
   return (
-    <div className="zmodal-back fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-start md:items-center justify-center p-4 overflow-y-auto" onMouseDown={onClose}>
-      <div className={cls('zmodal-card glass rounded-2xl w-full my-8 shadow-glow', wide?'max-w-3xl':'max-w-lg')} onMouseDown={e=>e.stopPropagation()}>
-        <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-line/10">
-          <div>
-            <h3 className="text-lg font-bold text-fg">{title}</h3>
-            {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+    <div className="zmodal-back fixed inset-0 z-50 bg-black/60 backdrop-blur-sm overflow-y-auto" onMouseDown={onClose}>
+      <div className="flex min-h-full items-center justify-center p-4">
+        <div className={cls('zmodal-card glass rounded-2xl w-full shadow-glow flex flex-col max-h-[calc(100vh-2rem)]', wide?'max-w-3xl':'max-w-lg')}
+             onMouseDown={e=>e.stopPropagation()}>
+          <div className="shrink-0 flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-line/10">
+            <div className="min-w-0">
+              <h3 className="text-lg font-bold text-fg">{title}</h3>
+              {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+            </div>
+            <button onClick={onClose} className="shrink-0 text-slate-400 hover:text-fg p-1 rounded-lg hover:bg-hair/5"><Icon name="x" className="w-5 h-5"/></button>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-fg p-1 rounded-lg hover:bg-hair/5"><Icon name="x" className="w-5 h-5"/></button>
+          <div className="p-6 overflow-y-auto">{children}</div>
+          {footer && <div className="shrink-0 px-6 py-4 border-t border-line/10 bg-ink-850/40 rounded-b-2xl">{footer}</div>}
         </div>
-        <div className="p-6">{children}</div>
       </div>
     </div>
+  );
+}
+
+/* Groups related fields under a quiet heading so long forms stay scannable. */
+function FormSection({ title, children }){
+  return (
+    <section>
+      <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-3">{title}</h4>
+      <div className="space-y-4">{children}</div>
+    </section>
   );
 }
 
@@ -1145,49 +1163,76 @@ function TaskModal({ db, refresh, empById, task, defaultProjectId, isAdmin=true,
   };
 
   return (
-    <Modal title={ro?'Task Details':(editing?'Edit Task':'New Task')} subtitle={editing?(taskCode(task.seq)+(creator?' · raised by '+creator.name:'')):"A task under a client's project"} onClose={onClose} wide>
-      <div className="space-y-4">
-        <Field label="Project">
-          <select className="zi" disabled={ro} value={f.projectId} onChange={e=>up('projectId', e.target.value)}>
-            {db.projects.length===0 && <option value="">No projects — add one in Client Management</option>}
-            {db.projects.map(p=>{ const c=db.clients.find(x=>x.id===p.clientId); return <option key={p.id} value={p.id}>{(c?.company||'?')+' · '+p.name}</option>; })}
-          </select>
-        </Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Primary Task"><input className="zi" disabled={ro} value={f.primaryTask} onChange={e=>up('primaryTask',e.target.value)} placeholder="e.g. Checkout revamp"/></Field>
-          <Field label="Sub task"><input className="zi" disabled={ro} value={f.subTask} onChange={e=>up('subTask',e.target.value)} placeholder="e.g. Payment API"/></Field>
+    <Modal title={ro?'Task Details':(editing?'Edit Task':'New Task')}
+           subtitle={editing?(taskCode(task.seq)+(creator?' · raised by '+creator.name:'')):"A task under a client's project"}
+           onClose={onClose} wide
+           footer={
+             <div className="flex items-center gap-3">
+               {err && <p className="text-rose-400 text-xs font-semibold flex-1">{err}</p>}
+               <div className={cls('flex gap-3', err?'':'flex-1')}>
+                 <button onClick={onClose} className="flex-1 px-5 py-2.5 rounded-lg border border-hair/10 text-slate-300 font-semibold text-sm hover:bg-hair/5">{ro?'Close':'Cancel'}</button>
+                 {!ro && <button onClick={submit} disabled={busy} className="flex-1 px-5 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm whitespace-nowrap">{busy?'Saving…':(editing?'Save changes':'Create Task')}</button>}
+               </div>
+             </div>
+           }>
+      <div className="divide-y divide-line/10 -my-2">
+        <div className="py-5 first:pt-0">
+          <FormSection title="Where it lives">
+            <Field label="Project">
+              <select className="zi" disabled={ro} value={f.projectId} onChange={e=>up('projectId', e.target.value)}>
+                {db.projects.length===0 && <option value="">No projects — add one in Client Management</option>}
+                {db.projects.map(p=>{ const c=db.clients.find(x=>x.id===p.clientId); return <option key={p.id} value={p.id}>{(c?.company||'?')+' · '+p.name}</option>; })}
+              </select>
+            </Field>
+          </FormSection>
         </div>
-        <Field label="Detailed Task"><input className="zi" disabled={ro} value={f.detailedTask} onChange={e=>up('detailedTask',e.target.value)} placeholder="The specific work item" autoFocus={!ro}/></Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Developer / Employee"><select className="zi" disabled={ro} value={f.developerId} onChange={e=>up('developerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
-          <Field label="Checker"><select className="zi" disabled={ro} value={f.checkerId} onChange={e=>up('checkerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+
+        <div className="py-5">
+          <FormSection title="The task">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Primary Task"><input className="zi" disabled={ro} value={f.primaryTask} onChange={e=>up('primaryTask',e.target.value)} placeholder="e.g. Checkout revamp"/></Field>
+              <Field label="Sub task"><input className="zi" disabled={ro} value={f.subTask} onChange={e=>up('subTask',e.target.value)} placeholder="e.g. Payment API"/></Field>
+            </div>
+            <Field label="Detailed Task"><input className="zi" disabled={ro} value={f.detailedTask} onChange={e=>up('detailedTask',e.target.value)} placeholder="The specific work item" autoFocus={!ro}/></Field>
+          </FormSection>
         </div>
-        <div className="grid grid-cols-3 gap-4">
-          <Field label="Start date"><input type="date" className="zi" disabled={ro} value={f.startDate||''} onChange={e=>up('startDate',e.target.value)}/></Field>
-          <Field label="End date"><input type="date" className="zi" disabled={ro} value={f.endDate||''} onChange={e=>up('endDate',e.target.value)}/></Field>
-          <Field label="Status"><select className="zi" disabled={ro} value={f.status} onChange={e=>up('status',e.target.value)}>{Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
+
+        <div className="py-5">
+          <FormSection title="People &amp; schedule">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Developer / Employee"><select className="zi" disabled={ro} value={f.developerId} onChange={e=>up('developerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+              <Field label="Checker"><select className="zi" disabled={ro} value={f.checkerId} onChange={e=>up('checkerId',e.target.value)}><option value="">— Unassigned —</option>{db.employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></Field>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Field label="Start date"><input type="date" className="zi" disabled={ro} value={f.startDate||''} onChange={e=>up('startDate',e.target.value)}/></Field>
+              <Field label="End date"><input type="date" className="zi" disabled={ro} value={f.endDate||''} onChange={e=>up('endDate',e.target.value)}/></Field>
+              <Field label="Status"><select className="zi" disabled={ro} value={f.status} onChange={e=>up('status',e.target.value)}>{Object.keys(TASK_STATUSES).map(s=><option key={s} value={s}>{s}</option>)}</select></Field>
+            </div>
+          </FormSection>
         </div>
-        <Field label="Description"><textarea className="zi" rows={3} disabled={ro} value={f.description} onChange={e=>up('description',e.target.value)} placeholder="What needs to be done"/></Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Business Value"><textarea className="zi" rows={3} disabled={ro} value={f.businessValue} onChange={e=>up('businessValue',e.target.value)} placeholder="Why it matters / impact"/></Field>
-          <Field label="Acceptance Criteria"><textarea className="zi" rows={3} disabled={ro} value={f.acceptanceCriteria} onChange={e=>up('acceptanceCriteria',e.target.value)} placeholder="Definition of done"/></Field>
+
+        <div className="py-5">
+          <FormSection title="Detail">
+            <Field label="Description"><textarea className="zi" rows={3} disabled={ro} value={f.description} onChange={e=>up('description',e.target.value)} placeholder="What needs to be done"/></Field>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="Business Value"><textarea className="zi" rows={3} disabled={ro} value={f.businessValue} onChange={e=>up('businessValue',e.target.value)} placeholder="Why it matters / impact"/></Field>
+              <Field label="Acceptance Criteria"><textarea className="zi" rows={3} disabled={ro} value={f.acceptanceCriteria} onChange={e=>up('acceptanceCriteria',e.target.value)} placeholder="Definition of done"/></Field>
+            </div>
+            <Field label="Comments"><textarea className="zi" rows={3} disabled={ro} value={f.comments} onChange={e=>up('comments',e.target.value)} placeholder="Notes, blockers, updates"/></Field>
+            {editing && (
+              <div className="flex items-center gap-2 text-xs text-slate-500 pt-1">
+                <span className="font-semibold">Raised by</span>
+                {creator ? <><Avatar emp={creator} size="w-5 h-5 !text-[8px] !rounded-md"/><span className="text-slate-300">{creator.name}</span></> : <span>—</span>}
+              </div>
+            )}
+          </FormSection>
         </div>
-        <Field label="Comments"><textarea className="zi" rows={3} disabled={ro} value={f.comments} onChange={e=>up('comments',e.target.value)} placeholder="Notes, blockers, updates"/></Field>
+
         {editing && (
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <span className="font-semibold">Raised by</span>
-            {creator ? <><Avatar emp={creator} size="w-5 h-5 !text-[8px] !rounded-md"/><span className="text-slate-300">{creator.name}</span></> : <span>—</span>}
-          </div>
-        )}
-        {err && <p className="text-rose-400 text-xs font-semibold">{err}</p>}
-        <div className="flex gap-3 pt-1">
-          <button onClick={onClose} className="flex-1 py-2.5 rounded-lg border border-hair/10 text-slate-300 font-semibold text-sm hover:bg-hair/5">{ro?'Close':'Cancel'}</button>
-          {!ro && <button onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-brand-600 hover:bg-brand-500 disabled:opacity-60 text-white font-bold text-sm">{busy?'Saving…':(editing?'Save changes':'Create Task')}</button>}
-        </div>
-        {editing && (
-          <div className="pt-2">
-            <div className="text-xs font-semibold text-slate-400 mb-2">History</div>
-            <TaskHistory taskId={task.id} empById={empById} />
+          <div className="py-5 last:pb-0">
+            <FormSection title="History">
+              <TaskHistory taskId={task.id} empById={empById} />
+            </FormSection>
           </div>
         )}
       </div>
