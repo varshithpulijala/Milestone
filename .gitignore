@@ -1,0 +1,7 @@
+# Local-only test fixtures — sample data for trying the task import
+demo-tasks*.csv
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+*.lnk
